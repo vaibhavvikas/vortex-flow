@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = [
+    "apps/cli",
+    "apps/server",
+    "crates/types",
+    "crates/graph",
+    "crates/resolve",
+    "crates/engine",
+    "crates/storage",
+    "crates/identity",
+    "crates/providers",
+    "crates/logging",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Vaibhav Vikas <vbhvvikas@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/vaibhavvikas/vortex-flow"
+homepage = "https://github.com/vaibhavvikas/vortex-flow"
+description = "A visual, node-based pipeline builder for bacterial genomics"                           # MSRV — needed for resolver = "3" to do anything useful

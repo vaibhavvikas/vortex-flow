@@ -1,0 +1,31 @@
+{
+    "appId": "com.vortexflow.app",
+    "productName": "VortexFlow",
+    "files": [
+        "dist/**/*",
+        "electron/**/*"
+    ],
+    "extraResources": [
+        {
+            "from": "../../target/release/vortexflow-server",
+            "to": "bin/vortexflow-server"
+        }
+    ],
+    "mac": {
+        "target": "dmg",
+        "hardenedRuntime": true
+    },
+    "win": {
+        "target": "nsis"
+    },
+    "linux": {
+        "target": "AppImage"
+    },
+    "publish": [
+        {
+            "provider": "github",
+            "owner": "vaibhavvikas",
+            "repo": "vortexFlow"
+        }
+    ]
+}

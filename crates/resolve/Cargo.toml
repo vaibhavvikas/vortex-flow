@@ -1,0 +1,12 @@
+# crates/resolve/Cargo.toml
+[package]
+name = "vortexflow-resolve"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
+
+[dependencies]
+vortexflow-types = { path = "../types" }
