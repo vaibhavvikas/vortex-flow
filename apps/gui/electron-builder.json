@@ -7,8 +7,12 @@
     ],
     "extraResources": [
         {
-            "from": "../../target/release/vortexflow-server",
-            "to": "bin/vortexflow-server"
+            "from": "../../target/release",
+            "to": "bin",
+            "filter": [
+                "vortexflow-server",
+                "vortexflow-server.exe"
+            ]
         }
     ],
     "mac": {

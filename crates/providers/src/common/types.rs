@@ -32,6 +32,8 @@ pub struct SraRecord {
     pub treatment: Option<String>,
     pub antibody: Option<String>,
     pub expxml: Option<String>,
+    pub is_downloaded: Option<bool>,
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,4 +43,18 @@ pub struct SraSearchResponse {
     pub page: usize,
     pub page_size: usize,
     pub records: Vec<SraRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedFileMetadata {
+    pub item_id: String,
+    pub accession: String,
+    pub file_name: String,
+    pub format: String, // "sra" | "fastq" | "fasta"
+    pub read_pair: u8,  // 1 for SRA/FASTA/FastQ-R1, 2 for FastQ-R2
+    pub download_url: String,
+    pub mirror_type: String, // "aws_s3" | "gcp" | "https_ena" | "ncbi"
+    pub file_size_bytes: u64,
+    pub md5_checksum: Option<String>,
+    pub sha256_checksum: Option<String>,
 }

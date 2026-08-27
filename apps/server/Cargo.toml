@@ -17,4 +17,11 @@ tracing = "0.1"
 futures-util = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
 vortexflow-providers = { path = "../../crates/providers" }
+vortexflow-db = { path = "../../crates/db" }
+vortexflow-downloader = { path = "../../crates/downloader" }
+vortexflow-storage = { path = "../../crates/storage" }
 vortexflow-logging = { path = "../../crates/logging" }
+dirs = "6.0"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

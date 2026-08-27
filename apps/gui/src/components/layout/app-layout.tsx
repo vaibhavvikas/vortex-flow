@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useLocation, useNavigate, Outlet } from "@tanstack/react-router"
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -8,32 +9,72 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { AppSidebar, type TabId } from "@/components/app-sidebar"
-import { StatusBar } from "@/components/status-bar"
-import { WorkflowCanvas, type WorkflowNodeData } from "@/components/workflow-canvas"
-import { InspectorPanel } from "@/components/inspector-panel"
-import { LogDrawer } from "@/components/log-drawer"
-import { ExploreView } from "@/components/views/explore-view"
-import { RunsView } from "@/components/views/runs-view"
-import { ResultsView } from "@/components/views/results-view"
-import { SettingsView } from "@/components/views/settings-view"
-import { useCollection } from "@/hooks/use-collection"
+import { AppSidebar, type TabId } from "@/components/layout/app-sidebar"
+import { StatusBar } from "@/components/layout/status-bar"
+import { InspectorPanel } from "@/components/common/inspector-panel"
+import { LogDrawer } from "@/components/common/log-drawer"
+import { useSearchStore } from "@/features/explore"
+import type { WorkflowNodeData } from "@/features/workflows"
 import type { Node } from "@xyflow/react"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { SraRecord } from "@/services/sra-service"
 
 export function AppLayout() {
-  const [activeTab, setActiveTab] = React.useState<TabId>("search")
-  const [isInspectorOpen, setIsInspectorOpen] = React.useState(false)
+  const location = useLocation()
+  const navigate = useNavigate()
   const [isLogDrawerOpen, setIsLogDrawerOpen] = React.useState(false)
   const [selectedNode, setSelectedNode] = React.useState<Node<WorkflowNodeData> | null>(null)
-  const [selectedRecord, setSelectedRecord] = React.useState<{ record: SraRecord; db: string } | null>(null)
-  const { collection, addToCollection, removeFromCollection } = useCollection()
+  
+  const isInspectorOpen = useSearchStore((s) => s.isInspectorOpen)
+  const selectedRecord = useSearchStore((s) => s.selectedRecord)
+  const setIsInspectorOpen = useSearchStore((s) => s.setIsInspectorOpen)
+  const setSelectedRecord = useSearchStore((s) => s.setSelectedRecord)
 
-  const handleSelectRecord = (record: SraRecord, db: string) => {
-    setSelectedRecord({ record, db })
-    setIsInspectorOpen(true)
+  // Determine active tab from URL path
+  const pathname = location.pathname
+  const activeTab: TabId | "not-found" = React.useMemo(() => {
+    if (pathname.includes("/explore/collection")) return "collection"
+    if (pathname.includes("/explore/downloads")) return "downloads"
+    if (pathname.includes("/explore/search") || pathname === "/" || pathname === "/explore") return "search"
+    if (pathname.includes("/workflow")) return "workflow"
+    if (pathname.includes("/runs")) return "runs"
+    if (pathname.includes("/results")) return "results"
+    if (pathname.includes("/settings")) return "settings"
+    return "not-found"
+  }, [pathname])
+
+  // Navigation handler
+  const handleTabChange = (tab: TabId) => {
+    switch (tab) {
+      case "search":
+        navigate({ to: "/explore/search" })
+        break
+      case "collection":
+        navigate({ to: "/explore/collection" })
+        break
+      case "downloads":
+        navigate({ to: "/explore/downloads" })
+        break
+      case "workflow":
+        navigate({ to: "/workflow" })
+        break
+      case "runs":
+        navigate({ to: "/runs" })
+        break
+      case "results":
+        navigate({ to: "/results" })
+        break
+      case "settings":
+        navigate({ to: "/settings" })
+        break
+    }
   }
+
+  // Auto-collapse inspector when switching tabs
+  React.useEffect(() => {
+    setIsInspectorOpen(false)
+    setSelectedRecord(null)
+    setSelectedNode(null)
+  }, [activeTab, setIsInspectorOpen, setSelectedRecord])
 
   const isExploreTab = activeTab === "search" || activeTab === "collection" || activeTab === "downloads"
 
@@ -44,8 +85,7 @@ export function AppLayout() {
         <SidebarProvider className="flex flex-1 w-full h-full min-h-0 overflow-hidden min-h-full">
           <AppSidebar
             activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            collectionCount={collection.length}
+            setActiveTab={handleTabChange}
           />
 
           <SidebarInset className="flex flex-row flex-1 min-h-0 overflow-hidden border border-border/50 shadow-sm rounded-xl my-2 mr-2 ml-0 group-data-[collapsible=icon]:ml-2">
@@ -85,21 +125,7 @@ export function AppLayout() {
               </header>
 
               <ScrollArea className="flex-1 h-full min-h-0">
-                {isExploreTab && (
-                  <ExploreView
-                    activeSubView={activeTab as "search" | "collection" | "downloads"}
-                    collection={collection}
-                    onAddToCollection={addToCollection}
-                    onRemoveFromCollection={removeFromCollection}
-                    onSelectRecord={handleSelectRecord}
-                  />
-                )}
-                {activeTab === "workflow" && (
-                  <WorkflowCanvas onSelectNode={(node) => setSelectedNode(node)} />
-                )}
-                {activeTab === "runs" && <RunsView />}
-                {activeTab === "results" && <ResultsView />}
-                {activeTab === "settings" && <SettingsView />}
+                <Outlet />
               </ScrollArea>
 
               <LogDrawer

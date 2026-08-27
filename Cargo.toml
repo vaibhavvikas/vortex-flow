@@ -10,6 +10,8 @@ members = [
     "crates/storage",
     "crates/identity",
     "crates/providers",
+    "crates/db",
+    "crates/downloader",
     "crates/logging",
 ]
 
