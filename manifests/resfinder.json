@@ -1,0 +1,171 @@
+{
+  "id": "resfinder",
+  "name": "ResFinder",
+  "version": "4.4.2",
+  "category": "AMR & Resistance",
+  "description": "Identifies acquired antimicrobial resistance genes and chromosomal point mutations in whole-genome sequence data.",
+  "install": {
+    "type": "rattler",
+    "packages": [
+      "python=3.10",
+      "bioconda::resfinder=4.4.2"
+    ],
+    "channels": [
+      "bioconda",
+      "conda-forge"
+    ]
+  },
+  "databases": [
+    {
+      "name": "resfinder_db",
+      "download_url": "https://bitbucket.org/genomicepidemiology/resfinder_db.git",
+      "is_git": true,
+      "destination_subpath": "db/resfinder_db",
+      "cli_flag": "-db_res",
+      "env_var_name": "CGE_RESFINDER_RESISTOME_DB"
+    },
+    {
+      "name": "pointfinder_db",
+      "download_url": "https://bitbucket.org/genomicepidemiology/pointfinder_db.git",
+      "is_git": true,
+      "destination_subpath": "db/pointfinder_db",
+      "cli_flag": "-db_point",
+      "env_var_name": "CGE_RESFINDER_POINTFINDER_DB"
+    }
+  ],
+  "execution": {
+    "type": "binary",
+    "executable_name": "run_resfinder.py",
+    "args_template": [
+      "-ifa", "{input_files}",
+      "-o", "{work_dir}",
+      "-t", "{threshold}",
+      "-l", "{min_cov}",
+      "-s", "{species}"
+    ]
+  },
+  "inputs": [
+    {
+      "id": "input_files",
+      "name": "Sequence Files",
+      "socket_type": "sequence_folder",
+      "direction": "input"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "resfinder_report",
+      "name": "ResFinder Report",
+      "socket_type": "resfinder_report",
+      "direction": "output"
+    },
+    {
+      "id": "results_tab",
+      "name": "AMR Genes (TSV)",
+      "socket_type": "tabular_report",
+      "direction": "output"
+    },
+    {
+      "id": "pheno_table",
+      "name": "Phenotypes (TSV)",
+      "socket_type": "tabular_report",
+      "direction": "output"
+    },
+    {
+      "id": "point_results",
+      "name": "Point Mutations (TSV)",
+      "socket_type": "tabular_report",
+      "direction": "output"
+    },
+    {
+      "id": "hit_seqs",
+      "name": "Hit Sequences (FASTA)",
+      "socket_type": "fasta_file",
+      "direction": "output"
+    }
+  ],
+  "params": [
+    {
+      "id": "threshold",
+      "name": "Min % Identity",
+      "type": "number",
+      "default": 0.90,
+      "min": 0.50,
+      "max": 1.00,
+      "step": 0.05,
+      "description": "Minimum BLAST/KMA percent identity threshold (default 0.90)"
+    },
+    {
+      "id": "min_cov",
+      "name": "Min Coverage",
+      "type": "number",
+      "default": 0.60,
+      "min": 0.10,
+      "max": 1.00,
+      "step": 0.05,
+      "description": "Minimum percent sequence length coverage (default 0.60)"
+    },
+    {
+      "id": "species",
+      "name": "Point Mutation Species",
+      "type": "select",
+      "default": "other",
+      "options": [
+        "other",
+        "escherichia_coli",
+        "klebsiella",
+        "salmonella",
+        "campylobacter",
+        "staphylococcus_aureus",
+        "enterococcus_faecium",
+        "enterococcus_faecalis",
+        "mycobacterium_tuberculosis",
+        "helicobacter_pylori",
+        "neisseria_gonorrhoeae"
+      ],
+      "description": "Species database for PointFinder chromosomal point mutations"
+    },
+    {
+      "id": "acquired",
+      "name": "Scan Acquired AMR",
+      "type": "boolean",
+      "default": true,
+      "cli_flag": "-acq",
+      "description": "Identify acquired antimicrobial resistance genes"
+    },
+    {
+      "id": "point",
+      "name": "Scan Point Mutations",
+      "type": "boolean",
+      "default": false,
+      "cli_flag": "-c",
+      "description": "Identify chromosomal point mutations in target species"
+    }
+  ],
+  "output_artifacts": [
+    {
+      "id": "results_tab",
+      "file_pattern": "ResFinder_results_tab.txt",
+      "label": "Acquired Resistance Genes Table",
+      "format": "tsv"
+    },
+    {
+      "id": "pheno_table",
+      "file_pattern": "pheno_table.txt",
+      "label": "Predicted Phenotype Susceptibility Table",
+      "format": "tsv"
+    },
+    {
+      "id": "point_results",
+      "file_pattern": "PointFinder_results.txt",
+      "label": "Point Mutations Table",
+      "format": "tsv"
+    },
+    {
+      "id": "hit_seqs",
+      "file_pattern": "ResFinder_Hit_in_genome_seq.fsa",
+      "label": "Extracted Resistance Gene FASTA Hits",
+      "format": "fasta"
+    }
+  ]
+}

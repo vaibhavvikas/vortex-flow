@@ -1,7 +1,6 @@
 import * as React from "react"
 import { useLocation, useNavigate, Outlet } from "@tanstack/react-router"
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
-import { Separator } from "@/components/ui/separator"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -35,7 +34,9 @@ export function AppLayout() {
     if (pathname.includes("/explore/collection")) return "collection"
     if (pathname.includes("/explore/downloads")) return "downloads"
     if (pathname.includes("/explore/search") || pathname === "/" || pathname === "/explore") return "search"
+    if (pathname.includes("/workflow-v2")) return "workflow-v2"
     if (pathname.includes("/workflow")) return "workflow"
+    if (pathname.includes("/extensions")) return "extensions"
     if (pathname.includes("/runs")) return "runs"
     if (pathname.includes("/results")) return "results"
     if (pathname.includes("/settings")) return "settings"
@@ -56,6 +57,9 @@ export function AppLayout() {
         break
       case "workflow":
         navigate({ to: "/workflow" })
+        break
+      case "extensions":
+        navigate({ to: "/extensions" })
         break
       case "runs":
         navigate({ to: "/runs" })
@@ -93,7 +97,6 @@ export function AppLayout() {
               <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border px-4 bg-background">
                 <div className="flex items-center gap-2">
                   <SidebarTrigger className="-ml-1" />
-                  <Separator orientation="vertical" className="mr-2 h-4" />
                   <Breadcrumb>
                     <BreadcrumbList>
                       <BreadcrumbItem>

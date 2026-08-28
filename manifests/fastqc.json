@@ -1,0 +1,71 @@
+{
+  "id": "fastqc",
+  "name": "FastQC 0.12.1",
+  "version": "0.12.1",
+  "category": "Quality Control",
+  "description": "High-throughput sequence quality control report generator for FASTQ and BAM data.",
+  "install": {
+    "type": "rattler",
+    "packages": ["bioconda::fastqc=0.12.1"],
+    "channels": ["bioconda", "conda-forge"]
+  },
+  "databases": [],
+  "execution": {
+    "type": "binary",
+    "executable_name": "fastqc",
+    "args_template": [
+      "-o", "{work_dir}",
+      "-t", "{threads}",
+      "{input_files}"
+    ]
+  },
+  "inputs": [
+    {
+      "id": "input_files",
+      "name": "Sequence Files",
+      "socket_type": "sequence_folder",
+      "direction": "input"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "fastqc_report",
+      "name": "QC Report (HTML/ZIP)",
+      "socket_type": "tabular_report",
+      "direction": "output"
+    }
+  ],
+  "params": [
+    {
+      "id": "threads",
+      "name": "threads (-t)",
+      "type": "number",
+      "default": 2,
+      "min": 1,
+      "max": 32,
+      "step": 1,
+      "description": "Number of parallel processing threads"
+    },
+    {
+      "id": "extract",
+      "name": "extract_zip",
+      "type": "boolean",
+      "default": true,
+      "description": "Decompress the output zip files"
+    }
+  ],
+  "output_artifacts": [
+    {
+      "id": "qc_html",
+      "file_pattern": "*_fastqc.html",
+      "label": "FastQC Quality Report (HTML)",
+      "format": "html"
+    },
+    {
+      "id": "qc_data",
+      "file_pattern": "fastqc_data.txt",
+      "label": "FastQC Summary Metrics",
+      "format": "tsv"
+    }
+  ]
+}

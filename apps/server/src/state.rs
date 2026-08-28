@@ -10,6 +10,8 @@ pub struct AppState {
   pub collection_service: Arc<CollectionService>,
   pub url_resolver: Arc<SequenceUrlResolver>,
   pub download_manager: Arc<DownloadManager>,
+  pub manifest_loader: Arc<vortexflow_workflow::ManifestLoader>,
+  pub install_log_mgr: Arc<vortexflow_engine::InstallLogManager>,
 }
 
 impl Default for AppState {
@@ -28,6 +30,9 @@ impl AppState {
 
     let collection_service = CollectionService::new(db_path)
       .expect("Failed to initialize SQLite persistent collection database");
+
+    let manifest_loader = Arc::new(vortexflow_workflow::ManifestLoader::new());
+    let install_log_mgr = Arc::new(vortexflow_engine::InstallLogManager::new());
 
     // On startup: Cleanly mark any orphaned "downloading" tasks as "paused" across app restart
     if let Ok(tasks) = collection_service.get_download_tasks() {
@@ -142,6 +147,8 @@ impl AppState {
       collection_service: collection_service_arc,
       url_resolver: Arc::new(SequenceUrlResolver::default_resolver()),
       download_manager,
+      manifest_loader,
+      install_log_mgr,
     }
   }
 }

@@ -21,6 +21,9 @@ vortexflow-db = { path = "../../crates/db" }
 vortexflow-downloader = { path = "../../crates/downloader" }
 vortexflow-storage = { path = "../../crates/storage" }
 vortexflow-logging = { path = "../../crates/logging" }
+vortexflow-workflow = { path = "../../crates/workflow" }
+vortexflow-engine = { path = "../../crates/engine" }
+uuid = { version = "1.0", features = ["v4", "serde"] }
 dirs = "6.0"
 
 [dev-dependencies]

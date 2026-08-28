@@ -21,7 +21,9 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-export type TabId = "search" | "collection" | "downloads" | "workflow" | "runs" | "results" | "settings"
+import { useWorkflowStore } from "@/features/workflows/stores/workflow-store"
+
+export type TabId = "search" | "collection" | "downloads" | "workflow" | "workflow-v2" | "extensions" | "runs" | "results" | "settings"
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeTab: TabId | "not-found"
@@ -33,6 +35,9 @@ export function AppSidebar({
   setActiveTab,
   ...props
 }: AppSidebarProps) {
+  const setIsPaletteOpen = useWorkflowStore((s) => s.setIsPaletteOpen)
+  const togglePalette = useWorkflowStore((s) => s.togglePalette)
+
   const exploreNavItems: NavMainItem[] = [
     {
       id: "search",
@@ -57,13 +62,37 @@ export function AppSidebar({
     },
   ]
 
+  const isWorkflowActive = activeTab === "workflow"
+
   const workspaceNavItems: NavMainItem[] = [
     {
       id: "workflow",
       title: "Workflow",
       icon: Workflow,
-      isActive: activeTab === "workflow",
+      isActive: isWorkflowActive,
       onClick: () => setActiveTab("workflow"),
+      items: [
+        {
+          id: "nodes",
+          title: "Nodes",
+          isActive: false,
+          onClick: () => {
+            if (!isWorkflowActive) {
+              setActiveTab("workflow")
+              setIsPaletteOpen(true)
+            } else {
+              togglePalette()
+            }
+          },
+        },
+      ],
+    },
+    {
+      id: "extensions",
+      title: "Extensions",
+      icon: Dna,
+      isActive: activeTab === "extensions",
+      onClick: () => setActiveTab("extensions"),
     },
     {
       id: "runs",

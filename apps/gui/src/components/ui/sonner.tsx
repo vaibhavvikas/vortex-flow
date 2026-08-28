@@ -32,11 +32,14 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
           "--border-radius": "var(--radius)",
+          "--width": "280px",
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast !w-auto !max-w-none !whitespace-nowrap",
+          toast: "cn-toast !w-[280px] !max-w-[280px] text-xs shadow-md border border-border/70 py-2 px-3 rounded-lg flex items-center gap-2",
+          title: "text-xs font-medium truncate",
+          icon: "shrink-0",
         },
       }}
       {...props}

@@ -56,11 +56,17 @@ export function NavMain({
               >
                 <SidebarMenuItem>
                   <CollapsibleTrigger
-                    render={<SidebarMenuButton tooltip={item.title} />}
+                    render={
+                      <SidebarMenuButton
+                        tooltip={item.title}
+                        isActive={item.isActive}
+                        onClick={item.onClick}
+                      />
+                    }
                   >
                     {item.icon && <item.icon />}
                     <span>{item.title}</span>
-                    <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                    <ChevronRight className="ml-auto transition-transform duration-200 group-data-open/collapsible:rotate-90 group-data-[state=open]/collapsible:rotate-90 group-aria-expanded/collapsible:rotate-90 in-data-open:rotate-90 in-aria-expanded:rotate-90" />
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <SidebarMenuSub>
@@ -69,6 +75,7 @@ export function NavMain({
                           <SidebarMenuSubButton
                             isActive={subItem.isActive}
                             onClick={subItem.onClick}
+                            className="cursor-pointer w-full flex items-center"
                           >
                             <span>{subItem.title}</span>
                           </SidebarMenuSubButton>

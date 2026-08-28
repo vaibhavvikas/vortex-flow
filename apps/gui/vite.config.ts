@@ -20,4 +20,24 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes("node_modules")) {
+            if (id.includes("@xyflow") || id.includes("@dagrejs")) {
+              return "vendor-flow";
+            }
+            if (id.includes("@base-ui") || id.includes("lucide-react")) {
+              return "vendor-ui";
+            }
+            if (id.includes("react-dom") || id.includes("@tanstack")) {
+              return "vendor-core";
+            }
+          }
+        },
+      },
+    },
+  },
 });

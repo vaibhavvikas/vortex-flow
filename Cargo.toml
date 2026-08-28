@@ -4,7 +4,7 @@ members = [
     "apps/cli",
     "apps/server",
     "crates/types",
-    "crates/graph",
+    "crates/workflow",
     "crates/resolve",
     "crates/engine",
     "crates/storage",

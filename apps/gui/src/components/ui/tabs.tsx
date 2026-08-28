@@ -13,7 +13,7 @@ function Tabs({
       data-slot="tabs"
       data-orientation={orientation}
       className={cn(
-        "group/tabs flex gap-2 data-horizontal:flex-col",
+        "group/tabs flex gap-6 data-horizontal:flex-col data-vertical:flex-row",
         className
       )}
       {...props}
@@ -22,12 +22,12 @@ function Tabs({
 }
 
 const tabsListVariants = cva(
-  "group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
+  "group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col group-data-vertical/tabs:items-stretch data-[variant=line]:rounded-none",
   {
     variants: {
       variant: {
         default: "bg-muted",
-        line: "gap-1 bg-transparent",
+        line: "gap-1 bg-transparent group-data-horizontal/tabs:border-b group-data-horizontal/tabs:border-border/60",
       },
     },
     defaultVariants: {
@@ -56,9 +56,10 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
     <TabsPrimitive.Tab
       data-slot="tabs-trigger"
       className={cn(
-        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium whitespace-nowrap text-muted-foreground transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 select-none",
+        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 select-none cursor-pointer",
         "group-data-[variant=default]/tabs-list:data-active:bg-background group-data-[variant=default]/tabs-list:data-active:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-xs dark:group-data-[variant=default]/tabs-list:data-active:bg-input/30",
-        "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:rounded-none group-data-[variant=line]/tabs-list:-mb-px group-data-[variant=line]/tabs-list:data-active:bg-transparent group-data-[variant=line]/tabs-list:data-active:text-foreground group-data-[variant=line]/tabs-list:data-active:border-b-2 group-data-[variant=line]/tabs-list:data-active:border-primary group-data-[variant=line]/tabs-list:pb-2",
+        "group-data-horizontal/tabs:group-data-[variant=line]/tabs-list:bg-transparent group-data-horizontal/tabs:group-data-[variant=line]/tabs-list:rounded-none group-data-horizontal/tabs:group-data-[variant=line]/tabs-list:-mb-px group-data-horizontal/tabs:group-data-[variant=line]/tabs-list:data-active:bg-transparent group-data-horizontal/tabs:group-data-[variant=line]/tabs-list:data-active:text-foreground group-data-horizontal/tabs:group-data-[variant=line]/tabs-list:data-active:border-b-2 group-data-horizontal/tabs:group-data-[variant=line]/tabs-list:data-active:border-primary group-data-horizontal/tabs:group-data-[variant=line]/tabs-list:pb-2",
+        "group-data-vertical/tabs:justify-start group-data-vertical/tabs:h-9 group-data-vertical/tabs:w-full group-data-vertical/tabs:group-data-[variant=line]/tabs-list:-mr-px group-data-vertical/tabs:group-data-[variant=line]/tabs-list:rounded-none group-data-vertical/tabs:group-data-[variant=line]/tabs-list:data-active:bg-transparent group-data-vertical/tabs:group-data-[variant=line]/tabs-list:data-active:text-foreground group-data-vertical/tabs:group-data-[variant=line]/tabs-list:data-active:border-r-2 group-data-vertical/tabs:group-data-[variant=line]/tabs-list:data-active:border-primary group-data-vertical/tabs:group-data-[variant=line]/tabs-list:pr-3.5",
         className
       )}
       {...props}

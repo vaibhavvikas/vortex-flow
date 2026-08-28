@@ -652,11 +652,11 @@ export function InspectorPanel({
               <CardContent className="p-3 pt-2 space-y-3">
                 <div className="space-y-1">
                   <label className="text-sm text-muted-foreground font-medium">Allocated Threads</label>
-                  <Input type="number" defaultValue={selectedNode.data.threads} />
+                  <Input type="number" defaultValue={String((selectedNode.data as any)?.threads ?? 4)} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm text-muted-foreground font-medium">Memory Allocation</label>
-                  <Input defaultValue={selectedNode.data.mem} />
+                  <Input defaultValue={String((selectedNode.data as any)?.mem ?? "8GB")} />
                 </div>
               </CardContent>
             </Card>
