@@ -2,13 +2,18 @@ pub mod env;
 pub mod error;
 pub mod executor;
 pub mod installer;
+pub mod nodes;
+pub mod runner;
+pub mod types;
 
 pub use env::EnvironmentManager;
 pub use error::EngineError;
-pub use executor::{
-    NodeExecutionReport, NodeStatus, WorkflowExecutionReport, WorkflowExecutor, WorkflowStreamEvent,
-};
+pub use executor::WorkflowExecutor;
 pub use installer::{InstallLogManager, ToolInstaller};
+pub use runner::ToolRunner;
+pub use types::{
+    NodeExecutionReport, NodeStatus, WorkflowExecutionReport, WorkflowStreamEvent,
+};
 
 #[cfg(test)]
 mod tests {
@@ -44,6 +49,9 @@ mod tests {
         graph.nodes[0].params = serde_json::json!({
             "directory_path": fasta_dir.to_string_lossy(),
             "file_pattern": "*.fasta",
+        });
+        graph.nodes[2].params = serde_json::json!({
+            "destination_dir": temp_dir.join("output").to_string_lossy(),
         });
 
         let report = executor

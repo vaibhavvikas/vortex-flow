@@ -33,139 +33,239 @@
       "env_var_name": "CGE_RESFINDER_POINTFINDER_DB"
     }
   ],
-  "execution": {
-    "type": "binary",
-    "executable_name": "run_resfinder.py",
-    "args_template": [
-      "-ifa", "{input_files}",
-      "-o", "{work_dir}",
-      "-t", "{threshold}",
-      "-l", "{min_cov}",
-      "-s", "{species}"
-    ]
-  },
-  "inputs": [
+  "nodes": [
     {
-      "id": "input_files",
-      "name": "Sequence Files",
-      "socket_type": "sequence_folder",
-      "direction": "input"
-    }
-  ],
-  "outputs": [
-    {
-      "id": "resfinder_report",
-      "name": "ResFinder Report",
-      "socket_type": "resfinder_report",
-      "direction": "output"
-    },
-    {
-      "id": "results_tab",
-      "name": "AMR Genes (TSV)",
-      "socket_type": "tabular_report",
-      "direction": "output"
-    },
-    {
-      "id": "pheno_table",
-      "name": "Phenotypes (TSV)",
-      "socket_type": "tabular_report",
-      "direction": "output"
-    },
-    {
-      "id": "point_results",
-      "name": "Point Mutations (TSV)",
-      "socket_type": "tabular_report",
-      "direction": "output"
-    },
-    {
-      "id": "hit_seqs",
-      "name": "Hit Sequences (FASTA)",
-      "socket_type": "fasta_file",
-      "direction": "output"
-    }
-  ],
-  "params": [
-    {
-      "id": "threshold",
-      "name": "Min % Identity",
-      "type": "number",
-      "default": 0.90,
-      "min": 0.50,
-      "max": 1.00,
-      "step": 0.05,
-      "description": "Minimum BLAST/KMA percent identity threshold (default 0.90)"
-    },
-    {
-      "id": "min_cov",
-      "name": "Min Coverage",
-      "type": "number",
-      "default": 0.60,
-      "min": 0.10,
-      "max": 1.00,
-      "step": 0.05,
-      "description": "Minimum percent sequence length coverage (default 0.60)"
-    },
-    {
-      "id": "species",
-      "name": "Point Mutation Species",
-      "type": "select",
-      "default": "other",
-      "options": [
-        "other",
-        "escherichia_coli",
-        "klebsiella",
-        "salmonella",
-        "campylobacter",
-        "staphylococcus_aureus",
-        "enterococcus_faecium",
-        "enterococcus_faecalis",
-        "mycobacterium_tuberculosis",
-        "helicobacter_pylori",
-        "neisseria_gonorrhoeae"
+      "id": "resfinder_runner",
+      "name": "ResFinder Execution",
+      "node_type": "executor",
+      "description": "Executes ResFinder 4.4.2 CLI on genomic sequence reads and writes result tables",
+      "validation": {
+        "require_at_least_one": ["acquired", "point"],
+        "error_message": "At least one target ('Scan Acquired AMR' or 'Scan Point Mutations') must be checked."
+      },
+      "execution": {
+        "type": "binary",
+        "executable_name": "run_resfinder.py",
+        "args_template": [
+          "-ifa", "{input_files}",
+          "-o", "{work_dir}",
+          "-t", "{threshold}",
+          "-l", "{min_cov}",
+          "-s", "{species}"
+        ]
+      },
+      "inputs": [
+        {
+          "id": "input_files",
+          "name": "Sequence Files",
+          "socket_type": "sequence_folder",
+          "direction": "input"
+        }
       ],
-      "description": "Species database for PointFinder chromosomal point mutations"
+      "outputs": [
+        {
+          "id": "resfinder_dir",
+          "name": "ResFinder Output Folder",
+          "socket_type": "resfinder_output_folder",
+          "direction": "output"
+        },
+        {
+          "id": "results_tab",
+          "name": "AMR Genes (TSV)",
+          "socket_type": "tsv_file",
+          "direction": "output"
+        },
+        {
+          "id": "pheno_table",
+          "name": "Phenotypes (TSV)",
+          "socket_type": "tsv_file",
+          "direction": "output"
+        },
+        {
+          "id": "point_results",
+          "name": "Point Mutations (TSV)",
+          "socket_type": "tsv_file",
+          "direction": "output"
+        },
+        {
+          "id": "hit_seqs",
+          "name": "Hit Sequences (FASTA)",
+          "socket_type": "fasta_file",
+          "direction": "output"
+        }
+      ],
+      "params": [
+        {
+          "id": "threshold",
+          "name": "Min % Identity",
+          "type": "number",
+          "default": 0.90,
+          "min": 0.50,
+          "max": 1.00,
+          "step": 0.05,
+          "description": "Minimum BLAST/KMA percent identity threshold (default 0.90)"
+        },
+        {
+          "id": "min_cov",
+          "name": "Min Coverage",
+          "type": "number",
+          "default": 0.60,
+          "min": 0.10,
+          "max": 1.00,
+          "step": 0.05,
+          "description": "Minimum percent sequence length coverage (default 0.60)"
+        },
+        {
+          "id": "species",
+          "name": "Point Mutation Species",
+          "type": "select",
+          "default": "other",
+          "options": [
+            "other",
+            "escherichia_coli",
+            "klebsiella",
+            "salmonella",
+            "campylobacter",
+            "staphylococcus_aureus",
+            "enterococcus_faecium",
+            "enterococcus_faecalis",
+            "mycobacterium_tuberculosis",
+            "helicobacter_pylori",
+            "neisseria_gonorrhoeae"
+          ],
+          "description": "Species database for PointFinder chromosomal point mutations"
+        },
+        {
+          "id": "acquired",
+          "name": "Scan Acquired AMR",
+          "type": "boolean",
+          "default": true,
+          "cli_flag": "-acq",
+          "description": "Identify acquired antimicrobial resistance genes"
+        },
+        {
+          "id": "point",
+          "name": "Scan Point Mutations",
+          "type": "boolean",
+          "default": false,
+          "cli_flag": "-c",
+          "description": "Identify chromosomal point mutations in target species"
+        }
+      ],
+      "output_artifacts": [
+        {
+          "id": "results_tab",
+          "file_pattern": "ResFinder_results_tab.txt",
+          "label": "Acquired Resistance Genes Table",
+          "format": "tsv"
+        },
+        {
+          "id": "pheno_table",
+          "file_pattern": "pheno_table.txt",
+          "label": "Predicted Phenotype Susceptibility Table",
+          "format": "tsv"
+        },
+        {
+          "id": "point_results",
+          "file_pattern": "PointFinder_results.txt",
+          "label": "Point Mutations Table",
+          "format": "tsv"
+        },
+        {
+          "id": "hit_seqs",
+          "file_pattern": "ResFinder_Hit_in_genome_seq.fsa",
+          "label": "Extracted Resistance Gene FASTA Hits",
+          "format": "fasta"
+        }
+      ]
     },
     {
-      "id": "acquired",
-      "name": "Scan Acquired AMR",
-      "type": "boolean",
-      "default": true,
-      "cli_flag": "-acq",
-      "description": "Identify acquired antimicrobial resistance genes"
+      "id": "resfinder_pheno_parser",
+      "name": "ResFinder Phenotype Parser",
+      "node_type": "parser",
+      "description": "Parses ResFinder results and pheno_table into structured AMR resistance profiles and matrices",
+      "inputs": [
+        {
+          "id": "resfinder_dir",
+          "name": "ResFinder Output Folder",
+          "socket_type": "resfinder_output_folder",
+          "direction": "input"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "amr_genes",
+          "name": "AMR Gene Matrix",
+          "socket_type": "amr_gene_table",
+          "direction": "output"
+        },
+        {
+          "id": "point_mutations",
+          "name": "Point Mutation Matrix",
+          "socket_type": "point_mutation_table",
+          "direction": "output"
+        },
+        {
+          "id": "phenotype_profile",
+          "name": "Phenotype Susceptibility",
+          "socket_type": "phenotype_table",
+          "direction": "output"
+        }
+      ],
+      "params": [
+        {
+          "id": "min_identity_filter",
+          "name": "Min % Identity Filter",
+          "type": "number",
+          "default": 0.90,
+          "min": 0.50,
+          "max": 1.00,
+          "step": 0.05,
+          "description": "Filter parsed resistance genes by minimum % identity"
+        },
+        {
+          "id": "include_unknown",
+          "name": "Include Unknown Phenotypes",
+          "type": "boolean",
+          "default": false,
+          "description": "Include genes with unconfirmed phenotype susceptibility"
+        }
+      ]
     },
     {
-      "id": "point",
-      "name": "Scan Point Mutations",
-      "type": "boolean",
-      "default": false,
-      "cli_flag": "-c",
-      "description": "Identify chromosomal point mutations in target species"
-    }
-  ],
-  "output_artifacts": [
-    {
-      "id": "results_tab",
-      "file_pattern": "ResFinder_results_tab.txt",
-      "label": "Acquired Resistance Genes Table",
-      "format": "tsv"
-    },
-    {
-      "id": "pheno_table",
-      "file_pattern": "pheno_table.txt",
-      "label": "Predicted Phenotype Susceptibility Table",
-      "format": "tsv"
-    },
-    {
-      "id": "point_results",
-      "file_pattern": "PointFinder_results.txt",
-      "label": "Point Mutations Table",
-      "format": "tsv"
-    },
-    {
-      "id": "hit_seqs",
-      "file_pattern": "ResFinder_Hit_in_genome_seq.fsa",
-      "label": "Extracted Resistance Gene FASTA Hits",
-      "format": "fasta"
+      "id": "resfinder_visualizer",
+      "name": "AMR Antibiogram Card",
+      "node_type": "viewer",
+      "description": "Interactive resistance heatmap, phenotype matrix, and antibiotic susceptibility card",
+      "inputs": [
+        {
+          "id": "amr_genes",
+          "name": "AMR Gene Matrix",
+          "socket_type": "amr_gene_table",
+          "direction": "input"
+        },
+        {
+          "id": "phenotype_profile",
+          "name": "Phenotype Susceptibility",
+          "socket_type": "phenotype_table",
+          "direction": "input"
+        }
+      ],
+      "outputs": [],
+      "params": [
+        {
+          "id": "view_mode",
+          "name": "Display Format",
+          "type": "select",
+          "default": "antibiogram_matrix",
+          "options": [
+            "antibiogram_matrix",
+            "gene_table",
+            "phenotype_summary"
+          ],
+          "description": "Default view layout in workflow canvas"
+        }
+      ]
     }
   ]
 }

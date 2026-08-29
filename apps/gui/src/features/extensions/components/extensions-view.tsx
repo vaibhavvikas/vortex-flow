@@ -281,25 +281,36 @@ export function ExtensionsView() {
 
                       {/* Sockets & Execution summary */}
                       <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-muted/30 border border-border/60 text-[11px]">
+                        {manifest.nodes && manifest.nodes.length > 0 ? (
+                          <div className="flex items-center justify-between text-muted-foreground">
+                            <span>Extension Suite:</span>
+                            <span className="text-foreground font-medium">{manifest.nodes.length} Nodes</span>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between text-muted-foreground">
+                              <span>Inputs:</span>
+                              <span className="text-foreground font-medium">{(manifest.inputs || []).length} Sockets</span>
+                            </div>
+                            <div className="flex items-center justify-between text-muted-foreground">
+                              <span>Outputs:</span>
+                              <span className="text-foreground font-medium">{(manifest.outputs || []).length} Sockets</span>
+                            </div>
+                          </>
+                        )}
                         <div className="flex items-center justify-between text-muted-foreground">
-                          <span>Inputs:</span>
-                          <span className="text-foreground font-medium">{manifest.inputs.length} Sockets</span>
-                        </div>
-                        <div className="flex items-center justify-between text-muted-foreground">
-                          <span>Outputs:</span>
-                          <span className="text-foreground font-medium">{manifest.outputs.length} Sockets</span>
-                        </div>
-                        <div className="flex items-center justify-between text-muted-foreground">
-                          <span>Binary:</span>
-                          <span className="text-foreground font-medium truncate max-w-[150px]">{manifest.execution?.executable_name || "CLI"}</span>
+                          <span>Environment:</span>
+                          <span className="text-foreground font-medium truncate max-w-[150px]">
+                            {manifest.install?.packages?.[0] || manifest.execution?.executable_name || "CLI"}
+                          </span>
                         </div>
                       </div>
 
                       {/* Databases if any */}
-                      {manifest.databases.length > 0 && (
+                      {Boolean(manifest.databases && manifest.databases.length > 0) && (
                         <div className="flex items-center gap-1.5 text-muted-foreground text-[11px]">
                           <Database className="size-3 text-primary" />
-                          <span>Requires {manifest.databases.length} Companion Databases</span>
+                          <span>Requires {manifest.databases?.length} Companion Databases</span>
                         </div>
                       )}
                     </CardContent>

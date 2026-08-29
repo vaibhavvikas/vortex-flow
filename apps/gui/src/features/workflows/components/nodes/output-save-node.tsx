@@ -1,8 +1,7 @@
 import * as React from "react"
-import { FolderDown, FolderOpen } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { GenericNodeCard, GenericInputField } from "./base-node-card"
+import { FolderDown } from "lucide-react"
+import { GenericNodeCard } from "./base-node-card"
+import { NodeInputField } from "./node-form-fields"
 import { workflowService } from "../../services/workflow-service"
 import type { WorkflowNodeData } from "../../types"
 
@@ -39,30 +38,14 @@ export const OutputSaveNode = React.memo(function OutputSaveNode({ data, selecte
       inputs={inputs}
       outputs={[]}
     >
-      {/* Destination Directory Field */}
-      <GenericInputField
+      <NodeInputField
         label="Export Path"
         description="Local destination directory for saved pipeline outputs"
-      >
-        <div className="flex items-center gap-1.5 w-full">
-          <Input
-            value={destDir}
-            onChange={(e) => data.onParamChange?.("destination_dir", e.target.value)}
-            placeholder="/path/to/results"
-            className="nodrag h-8 rounded-lg bg-background border border-border/80 text-xs px-3 shadow-xs font-mono"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handlePickDirectory}
-            className="nodrag h-8 px-2.5 rounded-lg shrink-0 cursor-pointer shadow-xs"
-            title="Browse Destination"
-          >
-            <FolderOpen className="size-3.5" />
-          </Button>
-        </div>
-      </GenericInputField>
+        value={destDir}
+        onChange={(val) => data.onParamChange?.("destination_dir", val)}
+        onBrowse={handlePickDirectory}
+        placeholder="/path/to/results"
+      />
     </GenericNodeCard>
   )
 })

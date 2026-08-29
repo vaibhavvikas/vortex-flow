@@ -27,4 +27,16 @@ pub enum WorkflowError {
 
     #[error("Invalid node direction: source port must be Output, target port must be Input")]
     InvalidPortDirection,
+
+    #[error("Validation failed for node '{node_id}': {message}")]
+    ValidationError {
+        node_id: String,
+        message: String,
+    },
+
+    #[error("Node '{node_id}' is missing required input for port '{port_id}'")]
+    MissingRequiredInput {
+        node_id: String,
+        port_id: String,
+    },
 }

@@ -78,6 +78,8 @@ pub struct ParameterDef {
     #[serde(default)]
     pub cli_flag: Option<String>,
     #[serde(default)]
+    pub required: Option<bool>,
+    #[serde(default)]
     pub description: String,
 }
 
@@ -90,7 +92,59 @@ pub struct OutputArtifactSpec {
     pub format: String, // "tsv", "json", "html", "fasta"
 }
 
-/// Complete declarative Tool Manifest
+/// Classification of a specialized node in a tool extension suite
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeType {
+    /// CLI binary or subprocess execution node
+    Executor,
+    /// Output file parser / tabular extractor node
+    Parser,
+    /// Data filter / column transformer node
+    Transformer,
+    /// Visualizer / interactive report card node
+    Viewer,
+}
+
+fn default_node_type() -> NodeType {
+    NodeType::Executor
+}
+
+/// Declarative validation rules for a node
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct NodeValidation {
+    #[serde(default)]
+    pub require_at_least_one: Vec<String>,
+    #[serde(default)]
+    pub error_message: Option<String>,
+}
+
+/// A specialized node definition exported by a tool manifest (ComfyUI multi-node pattern)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NodeDefinition {
+    pub id: String,
+    pub name: String,
+    #[serde(default = "default_node_type")]
+    pub node_type: NodeType,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub execution: Option<ExecutionStrategy>,
+    #[serde(default)]
+    pub inputs: Vec<Port>,
+    #[serde(default)]
+    pub outputs: Vec<Port>,
+    #[serde(default)]
+    pub params: Vec<ParameterDef>,
+    #[serde(default)]
+    pub output_artifacts: Vec<OutputArtifactSpec>,
+    #[serde(default)]
+    pub validation: Option<NodeValidation>,
+}
+
+/// Complete declarative Tool Manifest (Extension Suite)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolManifest {
     pub id: String,
@@ -101,7 +155,12 @@ pub struct ToolManifest {
     pub install: InstallStrategy,
     #[serde(default)]
     pub databases: Vec<DatabaseRequirement>,
-    pub execution: ExecutionStrategy,
+    /// Multiple specialized nodes exported by this package
+    #[serde(default)]
+    pub nodes: Vec<NodeDefinition>,
+    /// Legacy fallback execution strategy for single-node manifests
+    #[serde(default)]
+    pub execution: Option<ExecutionStrategy>,
     #[serde(default)]
     pub inputs: Vec<Port>,
     #[serde(default)]
@@ -110,6 +169,50 @@ pub struct ToolManifest {
     pub params: Vec<ParameterDef>,
     #[serde(default)]
     pub output_artifacts: Vec<OutputArtifactSpec>,
+    #[serde(default)]
+    pub validation: Option<NodeValidation>,
+}
+
+impl ToolManifest {
+    /// Resolves the specialized NodeDefinition by node ID, matching substring, or title
+    pub fn get_node_def(&self, node_id: &str, node_title: &str) -> Option<&NodeDefinition> {
+        if !node_id.is_empty() {
+            if let Some(node) = self.nodes.iter().find(|n| n.id == node_id || node_id.contains(&n.id)) {
+                return Some(node);
+            }
+        }
+        if !node_title.is_empty() {
+            if let Some(node) = self.nodes.iter().find(|n| n.name.eq_ignore_ascii_case(node_title)) {
+                return Some(node);
+            }
+        }
+        self.nodes.first()
+    }
+
+    /// Resolves the execution strategy for a specific node ID or falls back to the manifest default
+    pub fn get_execution_for_node(&self, node_id: &str, node_title: &str) -> Option<&ExecutionStrategy> {
+        if let Some(node) = self.get_node_def(node_id, node_title) {
+            if let Some(exec) = &node.execution {
+                return Some(exec);
+            }
+        }
+        if let Some(exec) = &self.execution {
+            return Some(exec);
+        }
+        self.nodes.iter().find_map(|n| n.execution.as_ref())
+    }
+
+    /// Resolves the primary binary name for tool health checks
+    pub fn primary_executable_name(&self) -> &str {
+        if let Some(exec) = self.get_execution_for_node("", "") {
+            match exec {
+                ExecutionStrategy::Binary { executable_name, .. } => executable_name.as_str(),
+                ExecutionStrategy::PythonModule { .. } => "python",
+            }
+        } else {
+            self.id.as_str()
+        }
+    }
 }
 
 /// Thread-safe loader and registry for tool manifests
@@ -232,12 +335,13 @@ mod tests {
         assert!(!loaded.is_empty(), "Should load manifests from ./manifests");
 
         let rf = loader.get("resfinder").expect("ResFinder manifest must be present");
-        assert_eq!(rf.name, "ResFinder 4.4.2");
+        assert_eq!(rf.name, "ResFinder");
+        assert_eq!(rf.version, "4.4.2");
         assert_eq!(rf.category, "AMR & Resistance");
         assert_eq!(rf.databases.len(), 2);
-        assert_eq!(rf.params.len(), 6);
 
         let fastqc = loader.get("fastqc").expect("FastQC manifest must be present");
-        assert_eq!(fastqc.name, "FastQC 0.12.1");
+        assert_eq!(fastqc.name, "FastQC");
+        assert_eq!(fastqc.version, "0.12.1");
     }
 }

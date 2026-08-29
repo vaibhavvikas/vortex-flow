@@ -1,5 +1,7 @@
 import type { WorkflowPort } from "../../workflows/types"
 
+export type NodeType = "executor" | "parser" | "transformer" | "viewer"
+
 export interface ParameterDef {
   id: string
   name: string
@@ -9,6 +11,8 @@ export interface ParameterDef {
   max?: number
   step?: number
   options?: string[]
+  cli_flag?: string
+  required?: boolean
   description?: string
 }
 
@@ -28,6 +32,23 @@ export interface OutputArtifactSpec {
   format: "tsv" | "json" | "html" | "fasta"
 }
 
+export interface NodeDefinition {
+  id: string
+  name: string
+  node_type?: NodeType
+  description?: string
+  icon?: string
+  execution?: {
+    type: "binary" | "python_module"
+    executable_name: string
+    args_template: string[]
+  }
+  inputs?: WorkflowPort[]
+  outputs?: WorkflowPort[]
+  params?: ParameterDef[]
+  output_artifacts?: OutputArtifactSpec[]
+}
+
 export interface ToolManifest {
   id: string
   name: string
@@ -39,16 +60,17 @@ export interface ToolManifest {
     packages?: string[]
     channels?: string[]
   }
-  databases: DatabaseRequirement[]
-  execution: {
+  databases?: DatabaseRequirement[]
+  nodes?: NodeDefinition[]
+  execution?: {
     type: "binary" | "python_module"
     executable_name: string
     args_template: string[]
   }
-  inputs: WorkflowPort[]
-  outputs: WorkflowPort[]
-  params: ParameterDef[]
-  output_artifacts: OutputArtifactSpec[]
+  inputs?: WorkflowPort[]
+  outputs?: WorkflowPort[]
+  params?: ParameterDef[]
+  output_artifacts?: OutputArtifactSpec[]
 }
 
 export interface ExtensionItem {

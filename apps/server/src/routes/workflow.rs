@@ -107,11 +107,16 @@ pub struct ValidateResponse {
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invalid_node_id: Option<String>,
 }
 
 /// POST /api/workflow/validate
-async fn validate_graph_handler(Json(graph): Json<WorkflowGraph>) -> impl IntoResponse {
-    match validate_workflow(&graph) {
+async fn validate_graph_handler(
+    State(state): State<AppState>,
+    Json(graph): Json<WorkflowGraph>,
+) -> impl IntoResponse {
+    match vortexflow_workflow::validator::validate_workflow_with_manifests(&graph, Some(&state.manifest_loader)) {
         Ok(report) => (
             StatusCode::OK,
             Json(ValidateResponse {
@@ -119,21 +124,30 @@ async fn validate_graph_handler(Json(graph): Json<WorkflowGraph>) -> impl IntoRe
                 execution_order: Some(report.execution_order),
                 error: None,
                 error_type: None,
+                invalid_node_id: None,
             }),
         ),
         Err(err) => {
-            let error_type = match err {
+            let error_type = match &err {
                 WorkflowError::CycleDetected { .. } => "cycle",
                 WorkflowError::IncompatibleSocketTypes { .. } => "socket_mismatch",
+                WorkflowError::ValidationError { .. } => "param_validation",
                 _ => "validation_error",
             };
+            let invalid_node_id = match &err {
+                WorkflowError::ValidationError { node_id, .. } => Some(node_id.clone()),
+                WorkflowError::MissingRequiredInput { node_id, .. } => Some(node_id.clone()),
+                WorkflowError::MissingNode { node_id } => Some(node_id.clone()),
+                _ => None,
+            };
             (
-                StatusCode::BAD_REQUEST,
+                StatusCode::OK,
                 Json(ValidateResponse {
                     is_valid: false,
                     execution_order: None,
                     error: Some(err.to_string()),
                     error_type: Some(error_type.to_string()),
+                    invalid_node_id,
                 }),
             )
         }

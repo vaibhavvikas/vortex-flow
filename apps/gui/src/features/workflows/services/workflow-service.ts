@@ -6,7 +6,8 @@ export interface ValidateWorkflowResponse {
   is_valid: boolean
   execution_order?: string[]
   error?: string
-  error_type?: "cycle" | "socket_mismatch" | "validation_error"
+  error_type?: "cycle" | "socket_mismatch" | "validation_error" | "param_validation" | string
+  invalid_node_id?: string
 }
 
 export interface RunWorkflowResponse {

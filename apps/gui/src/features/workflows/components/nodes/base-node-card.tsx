@@ -1,6 +1,6 @@
 import * as React from "react"
 import { Position } from "@xyflow/react"
-import { Info, Trash2, Loader2, Check, AlertCircle } from "lucide-react"
+import { Info, CircleHelp, Trash2, Loader2, Check, AlertCircle } from "lucide-react"
 import { BaseNode } from "@/components/ui/base-node"
 import { BaseHandle } from "@/components/ui/base-handle"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -15,14 +15,26 @@ export function getSocketColor(socketType: string, fallbackIndex: number = 0): s
       return "#f97316" // Orange
     case "fastq_pair":
       return "#ec4899" // Pink
+    case "resfinder_output_folder":
     case "resfinder_report":
       return "#10b981" // Emerald
-    case "tabular_report":
+    case "amr_gene_table":
+      return "#f43f5e" // Rose
+    case "point_mutation_table":
+      return "#f59e0b" // Amber
+    case "phenotype_table":
       return "#06b6d4" // Cyan
+    case "tsv_file":
+    case "tabular_report":
+      return "#0ea5e9" // Sky
+    case "html_report":
+      return "#6366f1" // Indigo
+    case "json_data":
+      return "#14b8a6" // Teal
     case "any":
       return "#3b82f6" // Blue
     default: {
-      const palette = ["#8b5cf6", "#f97316", "#ec4899", "#10b981", "#06b6d4", "#3b82f6", "#eab308"]
+      const palette = ["#8b5cf6", "#f97316", "#ec4899", "#10b981", "#06b6d4", "#3b82f6", "#eab308", "#14b8a6"]
       return palette[fallbackIndex % palette.length]
     }
   }
@@ -60,82 +72,111 @@ export function GenericNodeCard({
   const isRunning = status === "running" || status === "installing"
   const isCompleted = status === "completed"
   const isFailed = status === "failed"
+  const isInvalid = Boolean((data as any)?.isInvalid)
+  const validationError = (data as any)?.validationError as string | undefined
 
   return (
     <BaseNode
       selected={selected}
       className={cn(
         "w-80 generic-node-div group/node relative rounded-xl border bg-card shadow-sm transition-all duration-200 select-none",
+        isInvalid && "border-destructive ring-2 ring-destructive/50 shadow-[0_0_20px_rgba(239,68,68,0.25)]",
         isRunning && "border-primary/80 ring-2 ring-primary/25 shadow-[0_0_20px_rgba(59,130,246,0.15)]",
         isCompleted && "border-emerald-500/50 shadow-emerald-500/10",
         isFailed && "border-destructive ring-1 ring-destructive/40 shadow-[0_0_20px_rgba(239,68,68,0.15)]",
-        !isRunning && !isCompleted && !isFailed && "border-border hover:shadow-md",
+        !isRunning && !isCompleted && !isFailed && !isInvalid && "border-border hover:shadow-md",
         className
       )}
     >
-      {/* 1. Header (Title, Status Indicator/Delete, Description) */}
-      <div className="flex w-full flex-col border-b border-border/80">
-        <div className="flex w-full items-center justify-between gap-2 px-4 py-3">
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            <Icon
-              className={cn(
-                "size-4 shrink-0 transition-colors",
-                isRunning
-                  ? "text-primary"
-                  : isCompleted
-                  ? "text-emerald-500"
-                  : isFailed
-                  ? "text-destructive"
-                  : "text-foreground/80"
-              )}
-            />
-            <span className="text-sm font-semibold truncate text-foreground tracking-tight">
-              {title}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            {isRunning && (
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">
-                <Loader2 className="size-2.5 animate-spin" />
-                Running
-              </span>
+      {/* 1. Header (Title, CircleHelp Tooltip, Status Indicator/Delete) */}
+      <div className="flex w-full items-center justify-between gap-2 px-4 py-2.5 border-b border-border/80">
+        <div className="flex items-center gap-2 overflow-hidden min-w-0">
+          <Icon
+            className={cn(
+              "size-4 shrink-0 transition-colors",
+              isInvalid
+                ? "text-destructive"
+                : isRunning
+                ? "text-primary"
+                : isCompleted
+                ? "text-emerald-500"
+                : isFailed
+                ? "text-destructive"
+                : "text-foreground/80"
             )}
+          />
+          <span className="text-xs font-semibold truncate text-foreground tracking-tight">
+            {title}
+          </span>
 
-            {isCompleted && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-emerald-500 bg-emerald-500/10 border border-emerald-500/20">
-                <Check className="size-2.5" />
-                Done
-              </span>
-            )}
-
-            {isFailed && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-destructive bg-destructive/10 border border-destructive/20">
-                <AlertCircle className="size-2.5" />
-                Error
-              </span>
-            )}
-
-            {handleDelete && (
-              <button
-                type="button"
-                onClick={handleDelete}
-                title="Delete Node (Backspace/Del)"
-                className="size-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
-            )}
-          </div>
+          {description && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    className="inline-flex size-4 items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors cursor-help shrink-0 nodrag"
+                  >
+                    <CircleHelp className="size-3.5" />
+                  </button>
+                }
+              />
+              <TooltipContent side="top" className="max-w-xs text-xs font-normal leading-relaxed">
+                {description}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
 
-        {description && (
-          <div className="px-4 pb-3">
-            <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-              {description}
-            </p>
-          </div>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isInvalid && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-destructive bg-destructive/10 border border-destructive/30 cursor-help nodrag">
+                    <AlertCircle className="size-2.5" />
+                    Fix Settings
+                  </span>
+                }
+              />
+              <TooltipContent side="top" align="end" className="max-w-xs text-xs font-normal leading-relaxed">
+                {validationError || "At least one required configuration or input connection is missing."}
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {isRunning && (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">
+              <Loader2 className="size-2.5 animate-spin" />
+              Running
+            </span>
+          )}
+
+          {isCompleted && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-emerald-500 bg-emerald-500/10 border border-emerald-500/20">
+              <Check className="size-2.5" />
+              Done
+            </span>
+          )}
+
+          {isFailed && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-destructive bg-destructive/10 border border-destructive/20">
+              <AlertCircle className="size-2.5" />
+              Error
+            </span>
+          )}
+
+          {handleDelete && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              title="Delete Node (Backspace/Del)"
+              className="size-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer nodrag"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 2. Top Sockets Section (ComfyUI-Style: Inputs Left, Outputs Right) */}

@@ -36,12 +36,19 @@ export const CustomWorkflowEdge = React.memo(function CustomWorkflowEdge({
     targetY,
   })
 
+  const isConnectedNodeSelected = useWorkflowStore((s) =>
+    s.nodes.some(
+      (n) => n.selected && (n.id === props.source || n.id === props.target)
+    )
+  )
+  const isElevated = selected || isHovered || isConnectedNodeSelected
+
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation()
     setEdges((edges) => edges.filter((edge) => edge.id !== id))
   }
 
-  const defaultStrokeColor = (style?.stroke as string) || "hsl(var(--muted-foreground) / 0.5)"
+  const baseStrokeColor = (style?.stroke as string) || "hsl(var(--muted-foreground) / 0.5)"
   const activeStrokeColor = (style?.stroke as string) || "hsl(var(--primary))"
 
   return (
@@ -51,7 +58,7 @@ export const CustomWorkflowEdge = React.memo(function CustomWorkflowEdge({
         d={edgePath}
         fill="none"
         stroke="transparent"
-        strokeWidth={20}
+        strokeWidth={24}
         className="cursor-pointer"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -63,13 +70,13 @@ export const CustomWorkflowEdge = React.memo(function CustomWorkflowEdge({
         markerEnd={markerEnd}
         style={{
           ...style,
-          stroke: selected || isHovered ? activeStrokeColor : defaultStrokeColor,
-          strokeWidth: selected || isHovered ? 2.5 : 2,
-          filter:
-            selected || isHovered
-              ? `drop-shadow(0 0 6px ${activeStrokeColor})`
-              : undefined,
+          stroke: isElevated ? activeStrokeColor : baseStrokeColor,
+          strokeWidth: isElevated ? 2.75 : 2,
+          filter: isElevated
+            ? `drop-shadow(0 0 6px ${activeStrokeColor})`
+            : undefined,
           transition: "stroke 0.15s ease, stroke-width 0.15s ease",
+          zIndex: isElevated ? 50 : undefined,
         }}
         {...props}
       />

@@ -13,7 +13,19 @@ import {
   type Node,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { Play, RotateCcw, AlertTriangle, Terminal, Boxes, Sparkles, Lock, Unlock } from "lucide-react"
+import {
+  Play,
+  RotateCcw,
+  AlertTriangle,
+  Terminal,
+  Boxes,
+  Sparkles,
+  Lock,
+  Unlock,
+  Upload,
+  Download,
+  ShieldCheck,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
@@ -80,6 +92,9 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
 
   const [cycleError, setCycleError] = React.useState<string | null>(null)
   const [isConsoleOpen, setIsConsoleOpen] = React.useState(false)
+  const [isValidating, setIsValidating] = React.useState(false)
+  const [invalidNodeId, setInvalidNodeId] = React.useState<string | null>(null)
+  const [validationErrorMessage, setValidationErrorMessage] = React.useState<string | null>(null)
   const [runResult, setRunResult] = React.useState<RunWorkflowResponse | null>(null)
   const [liveLogs, setLiveLogs] = React.useState<{ node_id: string; line: string }[]>([])
   const [isInteractive, setIsInteractive] = React.useState(true)
@@ -94,6 +109,47 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
     }
   }, [])
 
+  // Pre-flight Pipeline Validation Handler
+  const handleValidatePipeline = React.useCallback(async () => {
+    if (nodes.length === 0) {
+      toast.error("Workflow canvas is empty. Add nodes before validating.")
+      return
+    }
+
+    setIsValidating(true)
+    setInvalidNodeId(null)
+    setValidationErrorMessage(null)
+
+    try {
+      const graphDto = getGraphDto()
+      const validation = await workflowService.validateWorkflow(graphDto)
+
+      if (validation.is_valid) {
+        setInvalidNodeId(null)
+        setValidationErrorMessage(null)
+        toast.success("Pipeline is valid! Ready for execution.", {
+          description: `${validation.execution_order?.length || nodes.length} nodes successfully sequenced.`,
+        })
+      } else {
+        if (validation.invalid_node_id) {
+          setInvalidNodeId(validation.invalid_node_id)
+        }
+        setValidationErrorMessage(validation.error || null)
+        if (validation.error_type === "cycle") {
+          setCycleError(validation.error || "Circular loop detected in workflow.")
+        } else {
+          toast.error("Pipeline Validation Failed", {
+            description: validation.error || "Please check node parameters and connections.",
+          })
+        }
+      }
+    } catch (err: any) {
+      toast.error("Validation check failed", { description: err.message })
+    } finally {
+      setIsValidating(false)
+    }
+  }, [nodes, getGraphDto])
+
   // Run Pipeline handler with real-time SSE event streaming
   const handleRunPipeline = async () => {
     if (abortControllerRef.current) {
@@ -102,25 +158,33 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
     const abortController = new AbortController()
     abortControllerRef.current = abortController
 
-    setIsRunning(true)
-    setIsConsoleOpen(true)
-    setLiveLogs([])
-    setRunResult(null)
-    setAllNodesStatus("idle")
-
+    setInvalidNodeId(null)
+    setValidationErrorMessage(null)
     const graphDto = getGraphDto()
 
     // 1. Validate graph first
     const validation = await workflowService.validateWorkflow(graphDto)
     if (!validation.is_valid) {
       setIsRunning(false)
+      if (validation.invalid_node_id) {
+        setInvalidNodeId(validation.invalid_node_id)
+      }
+      setValidationErrorMessage(validation.error || null)
       if (validation.error_type === "cycle") {
         setCycleError(validation.error || "Circular loop detected in workflow.")
       } else {
-        toast.error(`Validation Error: ${validation.error}`)
+        toast.error("Pipeline Validation Failed", {
+          description: validation.error || "Please check node parameters and connections.",
+        })
       }
       return
     }
+
+    setIsRunning(true)
+    setIsConsoleOpen(true)
+    setLiveLogs([])
+    setRunResult(null)
+    setAllNodesStatus("idle")
 
     toast.info("Pipeline execution started")
 
@@ -139,7 +203,16 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
           } else if (event.type === "node_complete") {
             setNodes((nds) =>
               nds.map((n) =>
-                n.id === event.node_id ? { ...n, data: { ...n.data, status: "completed" } } : n
+                n.id === event.node_id
+                  ? {
+                      ...n,
+                      data: {
+                        ...n.data,
+                        status: "completed",
+                        results: event.outputs || {},
+                      },
+                    }
+                  : n
               )
             )
           } else if (event.type === "node_error") {
@@ -183,7 +256,13 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
       ...n,
       data: {
         ...n.data,
+        isInvalid: n.id === invalidNodeId,
+        validationError: n.id === invalidNodeId ? validationErrorMessage || undefined : undefined,
         onParamChange: (key: string, value: any) => {
+          if (invalidNodeId === n.id) {
+            setInvalidNodeId(null)
+            setValidationErrorMessage(null)
+          }
           updateNodeParam(n.id, key, value)
         },
         onRun: () => {
@@ -195,7 +274,7 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
         },
       },
     }))
-  }, [nodes, updateNodeParam, deleteNode])
+  }, [nodes, invalidNodeId, validationErrorMessage, updateNodeParam, deleteNode])
 
   // Handle connecting two ports
   const onConnect = React.useCallback(
@@ -274,7 +353,7 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
           y: event.clientY,
         })
 
-        const newNodeId = `node_${item.id}_${Date.now()}`
+        const newNodeId = `node_${item.id.replace(/:/g, "_")}_${Date.now()}`
         const newNode: Node<WorkflowNodeData> = {
           id: newNodeId,
           type: item.type,
@@ -284,7 +363,10 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
             category: item.category,
             kind: item.kind,
             tool_id: item.tool_id,
+            node_id: item.node_id,
+            node_type: item.node_type,
             manifest: item.manifest,
+            nodeDef: item.nodeDef,
             status: "idle",
             inputs: item.inputs,
             outputs: item.outputs,
@@ -307,7 +389,7 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
       const x = -vp.x / vp.zoom + 200 + Math.random() * 50
       const y = -vp.y / vp.zoom + 120 + Math.random() * 50
 
-      const newNodeId = `node_${item.id}_${Date.now()}`
+      const newNodeId = `node_${item.id.replace(/:/g, "_")}_${Date.now()}`
       const newNode: Node<WorkflowNodeData> = {
         id: newNodeId,
         type: item.type,
@@ -317,7 +399,10 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
           category: item.category,
           kind: item.kind,
           tool_id: item.tool_id,
+          node_id: item.node_id,
+          node_type: item.node_type,
           manifest: item.manifest,
+          nodeDef: item.nodeDef,
           status: "idle",
           inputs: item.inputs,
           outputs: item.outputs,
@@ -332,6 +417,136 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
   )
 
 
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  // Export current workflow as .vortexflow JSON package
+  const handleExportWorkflow = React.useCallback(() => {
+    if (nodes.length === 0) {
+      toast.error("Workflow canvas is empty. Add nodes before exporting.")
+      return
+    }
+
+    const workflowData = {
+      vortexflow_version: "2.4.0",
+      exported_at: new Date().toISOString(),
+      name: "Custom Workflow",
+      viewport: getViewport(),
+      nodes: nodes.map((n) => ({
+        id: n.id,
+        type: n.type,
+        position: n.position,
+        data: {
+          title: n.data.title,
+          category: n.data.category,
+          kind: n.data.kind,
+          tool_id: n.data.tool_id,
+          node_id: n.data.node_id,
+          node_type: n.data.node_type,
+          manifest: n.data.manifest,
+          nodeDef: n.data.nodeDef,
+          inputs: n.data.inputs,
+          outputs: n.data.outputs,
+          params: n.data.params,
+        },
+      })),
+      edges: edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        sourceHandle: e.sourceHandle,
+        target: e.target,
+        targetHandle: e.targetHandle,
+        type: e.type || "default",
+        animated: e.animated ?? true,
+        style: e.style,
+      })),
+    }
+
+    const jsonStr = JSON.stringify(workflowData, null, 2)
+    const blob = new Blob([jsonStr], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    const dateStr = new Date().toISOString().slice(0, 10)
+    a.href = url
+    a.download = `pipeline-${dateStr}.vortexflow`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+
+    toast.success("Workflow exported successfully (.vortexflow)")
+  }, [nodes, edges, getViewport])
+
+  // Import workflow from file
+  const onImportFileChange = React.useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        try {
+          const content = event.target?.result as string
+          const parsed = JSON.parse(content)
+
+          if (!parsed.nodes || !Array.isArray(parsed.nodes)) {
+            toast.error("Invalid workflow file format: missing nodes array")
+            return
+          }
+
+          const importedNodes = parsed.nodes.map((n: any) => ({
+            id: n.id,
+            type: n.type || "dynamicTool",
+            position: n.position || { x: 100, y: 100 },
+            data: {
+              ...n.data,
+              status: "idle" as const,
+              params: n.data.params || {},
+              inputs: n.data.inputs || [],
+              outputs: n.data.outputs || [],
+            },
+          }))
+
+          const importedEdges = (parsed.edges || []).map((e: any) => {
+            const srcNode = importedNodes.find((n: any) => n.id === e.source)
+            const srcPort = srcNode?.data.outputs?.find((p: any) => p.id === e.sourceHandle)
+            const strokeColor = e.style?.stroke || (srcPort ? getSocketColor(srcPort.socket_type) : "#3b82f6")
+
+            return {
+              id: e.id || `e_${e.source}_${e.target}_${Date.now()}`,
+              source: e.source,
+              sourceHandle: e.sourceHandle,
+              target: e.target,
+              targetHandle: e.targetHandle,
+              type: "default",
+              animated: e.animated ?? true,
+              style: { stroke: strokeColor, strokeWidth: 2, ...e.style },
+            }
+          })
+
+          setNodes(importedNodes)
+          setEdges(importedEdges)
+
+          setTimeout(() => {
+            fitView({ duration: 400, padding: 0.35, maxZoom: 0.85 })
+          }, 80)
+
+          toast.success(
+            `Imported workflow: ${importedNodes.length} nodes, ${importedEdges.length} connections`
+          )
+        } catch (err: any) {
+          console.error("Failed to parse workflow file:", err)
+          toast.error("Could not parse workflow file. Please check file format.")
+        } finally {
+          if (fileInputRef.current) {
+            fileInputRef.current.value = ""
+          }
+        }
+      }
+      reader.readAsText(file)
+    },
+    [setNodes, setEdges, fitView]
+  )
 
   // Reset to default template and re-center view
   const handleResetTemplate = () => {
@@ -361,6 +576,15 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
 
   return (
     <div className="w-full h-full relative bg-background overflow-hidden flex flex-col">
+      {/* Hidden File Input for Workflow Import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={onImportFileChange}
+        accept=".vortexflow,.json"
+        className="hidden"
+      />
+
       {/* Top Workflow Control Bar */}
       <div className="h-12 px-4 border-b border-border/60 bg-card/60 backdrop-blur-md flex items-center justify-between z-10">
         <div className="flex items-center gap-2.5">
@@ -384,6 +608,31 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Import / Export Controls */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isRunning}
+            className="h-8 gap-1.5 text-xs cursor-pointer font-normal"
+            title="Import workflow from .vortexflow file"
+          >
+            <Upload className="size-3.5 text-muted-foreground" />
+            <span>Import</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportWorkflow}
+            disabled={isRunning}
+            className="h-8 gap-1.5 text-xs cursor-pointer font-normal"
+            title="Export workflow to .vortexflow file"
+          >
+            <Download className="size-3.5 text-muted-foreground" />
+            <span>Export</span>
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -404,6 +653,22 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
           >
             <RotateCcw className="size-3.5" />
             Reset
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleValidatePipeline}
+            disabled={isValidating || isRunning || nodes.length === 0}
+            className="h-8 gap-1.5 text-xs cursor-pointer font-normal text-foreground shadow-xs"
+            title="Pre-flight Pipeline Validation"
+          >
+            {isValidating ? (
+              <Spinner className="size-3.5" />
+            ) : (
+              <ShieldCheck className="size-3.5 text-primary" />
+            )}
+            <span>Validate</span>
           </Button>
 
           <Button
@@ -458,6 +723,8 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
             nodesDraggable={isInteractive}
             nodesConnectable={isInteractive}
             elementsSelectable={isInteractive}
+            elevateNodesOnSelect={true}
+            elevateEdgesOnSelect={true}
             defaultViewport={{ x: 50, y: 50, zoom: 0.82 }}
             minZoom={0.2}
             maxZoom={2}

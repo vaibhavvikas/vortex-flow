@@ -64,10 +64,7 @@ impl ToolInstaller {
         let bin_dir = env_path.join("bin");
 
         // 1. Check if executable exists in isolated bin
-        let exe_name = match &manifest.execution {
-            vortexflow_workflow::ExecutionStrategy::Binary { executable_name, .. } => executable_name,
-            vortexflow_workflow::ExecutionStrategy::PythonModule { .. } => "python",
-        };
+        let exe_name = manifest.primary_executable_name();
 
         let exe_path = bin_dir.join(exe_name);
         if !exe_path.exists() {
@@ -151,20 +148,41 @@ impl ToolInstaller {
             _ => ("osx-arm64", "osx-arm64"),
         };
 
-        // Download official standalone micromamba tarball
-        let download_url = format!("https://micro.mamba.pm/api/micromamba/{}/latest", arch_str);
-        info!("Fetching micromamba from {}", download_url);
+        // Download official standalone micromamba tarball (prefer GitHub releases CDN, fallback to micro.mamba.pm)
+        let primary_url = format!(
+            "https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-{}.tar.bz2",
+            arch_str
+        );
+        let fallback_url = format!("https://micro.mamba.pm/api/micromamba/{}/latest", arch_str);
 
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(60))
+            .timeout(std::time::Duration::from_secs(180))
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) VortexFlow/2.4")
+            .redirect(reqwest::redirect::Policy::limited(10))
             .build()
             .map_err(|e| EngineError::SubprocessFailed { message: e.to_string() })?;
 
-        let response = client.get(&download_url).send().await
-            .map_err(|e| EngineError::SubprocessFailed { message: format!("Failed to download micromamba: {}", e) })?;
+        info!("Fetching micromamba from {}", primary_url);
+        let response = match client.get(&primary_url).send().await {
+            Ok(resp) if resp.status().is_success() => resp,
+            _ => {
+                info!("Primary CDN unavailable, falling back to {}", fallback_url);
+                client
+                    .get(&fallback_url)
+                    .send()
+                    .await
+                    .map_err(|e| EngineError::SubprocessFailed {
+                        message: format!("Failed to download micromamba from mirrors: {}", e),
+                    })?
+            }
+        };
 
-        let bytes = response.bytes().await
-            .map_err(|e| EngineError::SubprocessFailed { message: e.to_string() })?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| EngineError::SubprocessFailed {
+                message: format!("Failed to receive micromamba package payload: {}", e),
+            })?;
 
         // Extract tar.bz2 archive directly to memory
         let tar_bz2 = bzip2::read::BzDecoder::new(&bytes[..]);
@@ -280,10 +298,7 @@ impl ToolInstaller {
         }
 
         // Ensure executable launcher in bin/
-        let exe_name = match &manifest.execution {
-            vortexflow_workflow::ExecutionStrategy::Binary { executable_name, .. } => executable_name,
-            vortexflow_workflow::ExecutionStrategy::PythonModule { .. } => "python",
-        };
+        let exe_name = manifest.primary_executable_name();
         let bin_dir = env_path.join("bin");
         let exe_path = bin_dir.join(exe_name);
         if !exe_path.exists() {

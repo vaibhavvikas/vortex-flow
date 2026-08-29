@@ -13,6 +13,9 @@ import {
   FolderOpen,
   ArrowRight,
   Sliders,
+  FileSpreadsheet,
+  Eye,
+  Filter,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -20,7 +23,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { extensionService } from "@/features/extensions/services/extension-service"
 import { getSocketColor } from "./nodes/base-node-card"
-import type { ToolManifest } from "@/features/extensions/types"
+import type { ToolManifest, NodeDefinition, NodeType } from "@/features/extensions/types"
 import type { WorkflowPort } from "../types"
 import { cn } from "@/lib/utils"
 
@@ -32,7 +35,10 @@ export interface NodePaletteItem {
   type: string
   kind: "folder_input" | "resfinder" | "output_save" | "tool"
   tool_id?: string
+  node_id?: string
+  node_type?: NodeType
   manifest?: ToolManifest
+  nodeDef?: NodeDefinition
   inputs: WorkflowPort[]
   outputs: WorkflowPort[]
   defaultParams: Record<string, any>
@@ -66,7 +72,7 @@ const BUILTIN_NODES: NodePaletteItem[] = [
     id: "output_save",
     title: "Output Directory Save",
     category: "Sink & Storage",
-    description: "Exports pipeline analytical summaries, TSVs, and workflow run outputs.",
+    description: "Exports analytical results, summaries, and TSV tables to disk.",
     type: "outputSave",
     kind: "output_save",
     inputs: [
@@ -112,42 +118,91 @@ export function WorkflowNodePalette({ isOpen = true, onClose, onAddNode }: Workf
       const extensions = await extensionService.getExtensions()
       if (!isMounted) return
 
-      // Only display installed extensions in the node palette
-      const items: NodePaletteItem[] = extensions
+      const items: NodePaletteItem[] = []
+
+      extensions
         .filter((ext) => ext.isInstalled)
-        .map(({ manifest }) => {
-          const inputs: WorkflowPort[] = manifest.inputs.map((inp) => ({
-            id: inp.id,
-            name: inp.name,
-            socket_type: (inp.socket_type as any) || "any",
-            direction: "input",
-          }))
+        .forEach(({ manifest }) => {
+          if (manifest.nodes && manifest.nodes.length > 0) {
+            // Multi-node extension package (Option A - ComfyUI pattern)
+            manifest.nodes.forEach((node) => {
+              const inputs: WorkflowPort[] = (node.inputs || []).map((inp) => ({
+                id: inp.id,
+                name: inp.name,
+                socket_type: (inp.socket_type as any) || "any",
+                direction: "input",
+              }))
 
-          const outputs: WorkflowPort[] = manifest.outputs.map((out) => ({
-            id: out.id,
-            name: out.name,
-            socket_type: (out.socket_type as any) || "any",
-            direction: "output",
-          }))
+              const outputs: WorkflowPort[] = (node.outputs || []).map((out) => ({
+                id: out.id,
+                name: out.name,
+                socket_type: (out.socket_type as any) || "any",
+                direction: "output",
+              }))
 
-          const defaultParams: Record<string, any> = {}
-          manifest.params?.forEach((p) => {
-            defaultParams[p.id] = p.default
-          })
+              const defaultParams: Record<string, any> = {}
+              node.params?.forEach((p) => {
+                defaultParams[p.id] = p.default
+              })
 
-          return {
-            id: manifest.id,
-            title: `${manifest.name} v${manifest.version}`,
-            category: manifest.category || "Bioinformatics Tool",
-            description: manifest.description,
-            type: "dynamicTool",
-            kind: "tool",
-            tool_id: manifest.id,
-            manifest,
-            inputs,
-            outputs,
-            defaultParams,
-            icon: Dna,
+              let IconComponent = Dna
+              if (node.node_type === "parser") IconComponent = FileSpreadsheet
+              else if (node.node_type === "viewer") IconComponent = Eye
+              else if (node.node_type === "transformer") IconComponent = Filter
+
+              items.push({
+                id: `${manifest.id}:${node.id}`,
+                title: node.name,
+                category: manifest.category || "Bioinformatics Tool",
+                description: node.description || manifest.description,
+                type: "dynamicTool",
+                kind: "tool",
+                tool_id: manifest.id,
+                node_id: node.id,
+                node_type: node.node_type,
+                manifest,
+                nodeDef: node,
+                inputs,
+                outputs,
+                defaultParams,
+                icon: IconComponent,
+              })
+            })
+          } else {
+            // Legacy single-node manifest fallback
+            const inputs: WorkflowPort[] = (manifest.inputs || []).map((inp) => ({
+              id: inp.id,
+              name: inp.name,
+              socket_type: (inp.socket_type as any) || "any",
+              direction: "input",
+            }))
+
+            const outputs: WorkflowPort[] = (manifest.outputs || []).map((out) => ({
+              id: out.id,
+              name: out.name,
+              socket_type: (out.socket_type as any) || "any",
+              direction: "output",
+            }))
+
+            const defaultParams: Record<string, any> = {}
+            manifest.params?.forEach((p) => {
+              defaultParams[p.id] = p.default
+            })
+
+            items.push({
+              id: manifest.id,
+              title: `${manifest.name} v${manifest.version}`,
+              category: manifest.category || "Bioinformatics Tool",
+              description: manifest.description,
+              type: "dynamicTool",
+              kind: "tool",
+              tool_id: manifest.id,
+              manifest,
+              inputs,
+              outputs,
+              defaultParams,
+              icon: Dna,
+            })
           }
         })
 

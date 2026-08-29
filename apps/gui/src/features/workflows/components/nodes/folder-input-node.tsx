@@ -1,8 +1,7 @@
 import * as React from "react"
-import { FolderInput, FolderOpen } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { GenericNodeCard, GenericInputField } from "./base-node-card"
+import { FolderInput } from "lucide-react"
+import { GenericNodeCard } from "./base-node-card"
+import { NodeInputField } from "./node-form-fields"
 import { workflowService } from "../../services/workflow-service"
 import type { WorkflowNodeData } from "../../types"
 
@@ -39,44 +38,23 @@ export const FolderInputNode = React.memo(function FolderInputNode({ data, selec
         },
       ]}
     >
-      {/* Directory Path Field */}
-      <GenericInputField
+      <NodeInputField
         label="Directory Path"
         required
         description="Local directory path containing raw sequence reads"
-      >
-        <div className="flex items-center gap-1.5 w-full">
-          <Input
-            value={dirPath}
-            onChange={(e) => data.onParamChange?.("directory_path", e.target.value)}
-            placeholder="/path/to/sequences"
-            className="h-8 rounded-lg bg-background border border-border/80 text-xs px-3 shadow-xs font-mono"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handlePickDirectory}
-            className="h-8 px-2.5 rounded-lg shrink-0 cursor-pointer shadow-xs"
-            title="Browse Directory"
-          >
-            <FolderOpen className="size-3.5" />
-          </Button>
-        </div>
-      </GenericInputField>
+        value={dirPath}
+        onChange={(val) => data.onParamChange?.("directory_path", val)}
+        onBrowse={handlePickDirectory}
+        placeholder="/path/to/sequences"
+      />
 
-      {/* File Pattern Field */}
-      <GenericInputField
+      <NodeInputField
         label="File Match Filter"
         description="Glob filter pattern for matching files"
-      >
-        <Input
-          value={pattern}
-          onChange={(e) => data.onParamChange?.("file_pattern", e.target.value)}
-          placeholder="*.fasta,*.fna,*.fastq"
-          className="h-8 rounded-lg bg-background border border-border/80 text-xs px-3 font-mono shadow-xs"
-        />
-      </GenericInputField>
+        value={pattern}
+        onChange={(val) => data.onParamChange?.("file_pattern", val)}
+        placeholder="*.fasta,*.fna,*.fastq"
+      />
     </GenericNodeCard>
   )
 })

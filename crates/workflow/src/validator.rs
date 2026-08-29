@@ -12,13 +12,25 @@ pub struct ValidationReport {
     pub execution_order: Vec<String>,
 }
 
+use crate::manifest::ManifestLoader;
+use crate::types::NodeKind;
+
 /// Validates a workflow graph:
 /// 1. Node uniqueness
 /// 2. Port existence and directions
 /// 3. Socket type compatibility
 /// 4. Strict cycle detection (rejects cycles)
-/// 5. Computes topological execution order
+/// 5. Node input completeness
+/// 6. Parameter validation rules
+/// 7. Computes topological execution order
 pub fn validate_workflow(graph: &WorkflowGraph) -> Result<ValidationReport, WorkflowError> {
+    validate_workflow_with_manifests(graph, None)
+}
+
+pub fn validate_workflow_with_manifests(
+    graph: &WorkflowGraph,
+    manifest_loader: Option<&ManifestLoader>,
+) -> Result<ValidationReport, WorkflowError> {
     let mut node_map = HashMap::new();
 
     // 1. Verify unique node IDs
@@ -107,10 +119,102 @@ pub fn validate_workflow(graph: &WorkflowGraph) -> Result<ValidationReport, Work
         cycle_nodes: vec![],
     })?;
 
-    let execution_order = sorted_indices
+    let execution_order: Vec<String> = sorted_indices
         .into_iter()
         .map(|node_id| node_id.to_string())
         .collect();
+
+    // 5. Validate Node Parameters and Required Inputs
+    for node in &graph.nodes {
+        match &node.kind {
+            NodeKind::FolderInput => {
+                let dir = node
+                    .params
+                    .get("directory_path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                if dir.is_empty() {
+                    return Err(WorkflowError::ValidationError {
+                        node_id: node.id.clone(),
+                        message: "Directory path is required for Folder Input node".to_string(),
+                    });
+                }
+            }
+            NodeKind::OutputSave => {
+                let dest = node
+                    .params
+                    .get("destination_dir")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                if dest.is_empty() {
+                    return Err(WorkflowError::ValidationError {
+                        node_id: node.id.clone(),
+                        message: "Export destination directory is required for Output Save node".to_string(),
+                    });
+                }
+
+                // Check that OutputSave has at least one incoming edge
+                let has_incoming = graph.edges.iter().any(|e| e.target_node == node.id);
+                if !has_incoming {
+                    return Err(WorkflowError::ValidationError {
+                        node_id: node.id.clone(),
+                        message: "Output Save node must be connected to an upstream data node".to_string(),
+                    });
+                }
+            }
+            NodeKind::Tool(tool_id) => {
+                // If loader provided, validate against tool manifest declarative rules
+                if let Some(loader) = manifest_loader {
+                    if let Some(manifest) = loader.get(tool_id) {
+                        let node_def = manifest.get_node_def(&node.id, &node.title);
+                        let validation_rules = node_def
+                            .and_then(|n| n.validation.as_ref())
+                            .or_else(|| manifest.validation.as_ref());
+
+                        if let Some(rules) = validation_rules {
+                            if !rules.require_at_least_one.is_empty() {
+                                let any_active = rules.require_at_least_one.iter().any(|k| {
+                                    node.params
+                                        .get(k)
+                                        .and_then(|v| {
+                                            if let Some(b) = v.as_bool() {
+                                                Some(b)
+                                            } else if let Some(s) = v.as_str() {
+                                                Some(s.eq_ignore_ascii_case("true") || s == "1")
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .unwrap_or_else(|| {
+                                            // Fallback to param default
+                                            node_def
+                                                .and_then(|nd| nd.params.iter().find(|p| p.id == *k))
+                                                .and_then(|p| p.default.as_bool())
+                                                .unwrap_or(false)
+                                        })
+                                });
+
+                                if !any_active {
+                                    let msg = rules.error_message.clone().unwrap_or_else(|| {
+                                        format!(
+                                            "At least one of [{}] must be selected",
+                                            rules.require_at_least_one.join(", ")
+                                        )
+                                    });
+                                    return Err(WorkflowError::ValidationError {
+                                        node_id: node.id.clone(),
+                                        message: msg,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     Ok(ValidationReport {
         is_valid: true,
