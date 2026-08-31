@@ -1,31 +1,26 @@
 import * as React from "react"
 import {
-  Search,
-  FolderInput,
-  FolderDown,
-  Boxes,
-  Plus,
-  PanelLeftClose,
   Dna,
-  GripVertical,
+  Search,
+  Sparkles,
+  Layers,
   ChevronRight,
-  Folder,
-  FolderOpen,
-  ArrowRight,
-  Sliders,
   FileSpreadsheet,
   Eye,
   Filter,
+  FolderInput,
+  FolderDown,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
 import { extensionService } from "@/features/extensions/services/extension-service"
-import { getSocketColor } from "./nodes/base-node-card"
+import { getSocketColor, formatPortType } from "./nodes/base-node-card"
 import type { ToolManifest, NodeDefinition, NodeType } from "@/features/extensions/types"
-import type { WorkflowPort } from "../types"
+import type { InputPort, OutputPort } from "../types"
 import { cn } from "@/lib/utils"
+import { registerDragTemplate } from "./drag-template-store"
 
 export interface NodePaletteItem {
   id: string
@@ -33,65 +28,17 @@ export interface NodePaletteItem {
   category: string
   description: string
   type: string
-  kind: "folder_input" | "resfinder" | "output_save" | "tool"
+  kind: string
   tool_id?: string
   node_id?: string
   node_type?: NodeType
   manifest?: ToolManifest
   nodeDef?: NodeDefinition
-  inputs: WorkflowPort[]
-  outputs: WorkflowPort[]
+  inputs: InputPort[]
+  outputs: OutputPort[]
   defaultParams: Record<string, any>
   icon: React.ComponentType<{ className?: string }>
 }
-
-const BUILTIN_NODES: NodePaletteItem[] = [
-  {
-    id: "folder_input",
-    title: "Folder Input",
-    category: "Data Ingestion",
-    description: "Ingests raw FASTQ, FASTA, or FNA sequencing reads from a local directory.",
-    type: "folderInput",
-    kind: "folder_input",
-    inputs: [],
-    outputs: [
-      {
-        id: "sequence_files",
-        name: "Sequence Files",
-        socket_type: "sequence_folder",
-        direction: "output",
-      },
-    ],
-    defaultParams: {
-      directory_path: "",
-      file_pattern: "*.fasta,*.fna,*.fa,*.fastq",
-    },
-    icon: FolderInput,
-  },
-  {
-    id: "output_save",
-    title: "Output Directory Save",
-    category: "Sink & Storage",
-    description: "Exports analytical results, summaries, and TSV tables to disk.",
-    type: "outputSave",
-    kind: "output_save",
-    inputs: [
-      {
-        id: "results",
-        name: "Input Data / Report",
-        socket_type: "any",
-        direction: "input",
-      },
-    ],
-    outputs: [],
-    defaultParams: {
-      destination_dir: "",
-      export_format: "tsv",
-      auto_open: true,
-    },
-    icon: FolderDown,
-  },
-]
 
 interface WorkflowNodePaletteProps {
   isOpen?: boolean
@@ -99,16 +46,17 @@ interface WorkflowNodePaletteProps {
   onAddNode?: (template: NodePaletteItem) => void
 }
 
-export function WorkflowNodePalette({ isOpen = true, onClose, onAddNode }: WorkflowNodePaletteProps) {
+export function WorkflowNodePalette({ isOpen = true, onClose: _onClose, onAddNode }: WorkflowNodePaletteProps) {
   const [searchQuery, setSearchQuery] = React.useState("")
   const [manifestItems, setManifestItems] = React.useState<NodePaletteItem[]>([])
   const [expandedCategories, setExpandedCategories] = React.useState<Set<string>>(
-    new Set(["Data Ingestion", "AMR & Resistance", "Sink & Storage", "Quality Control", "General"])
+    new Set(["Data Ingestion", "AMR & Resistance", "Data Transformation", "Visualizations", "Sink & Storage", "Quality Control", "General"])
   )
   const asideRef = React.useRef<HTMLElement>(null)
   const [hoveredItem, setHoveredItem] = React.useState<{
     item: NodePaletteItem
-    top: number
+    top?: number
+    bottom?: number
   } | null>(null)
   const hoverTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -124,21 +72,9 @@ export function WorkflowNodePalette({ isOpen = true, onClose, onAddNode }: Workf
         .filter((ext) => ext.isInstalled)
         .forEach(({ manifest }) => {
           if (manifest.nodes && manifest.nodes.length > 0) {
-            // Multi-node extension package (Option A - ComfyUI pattern)
             manifest.nodes.forEach((node) => {
-              const inputs: WorkflowPort[] = (node.inputs || []).map((inp) => ({
-                id: inp.id,
-                name: inp.name,
-                socket_type: (inp.socket_type as any) || "any",
-                direction: "input",
-              }))
-
-              const outputs: WorkflowPort[] = (node.outputs || []).map((out) => ({
-                id: out.id,
-                name: out.name,
-                socket_type: (out.socket_type as any) || "any",
-                direction: "output",
-              }))
+              const inputs: InputPort[] = node.inputs || []
+              const outputs: OutputPort[] = node.outputs || []
 
               const defaultParams: Record<string, any> = {}
               node.params?.forEach((p) => {
@@ -149,14 +85,30 @@ export function WorkflowNodePalette({ isOpen = true, onClose, onAddNode }: Workf
               if (node.node_type === "parser") IconComponent = FileSpreadsheet
               else if (node.node_type === "viewer") IconComponent = Eye
               else if (node.node_type === "transformer") IconComponent = Filter
+              else if (node.id === "core.folder_input" || node.id.includes("folder_input")) IconComponent = FolderInput
+              else if (node.id === "core.output_save" || node.id.includes("output_save")) IconComponent = FolderDown
+
+              let nodeType = "dynamicTool"
+              let kind = "tool"
+              let category = manifest.category || "Bioinformatics Tool"
+
+              if (node.id === "core.folder_input" || node.id === "folder_input" || node.id.endsWith(".folder_input")) {
+                nodeType = "folderInput"
+                kind = "folder_input"
+                category = "Data Ingestion"
+              } else if (node.id === "core.output_save" || node.id === "output_save" || node.id.endsWith(".output_save")) {
+                nodeType = "outputSave"
+                kind = "output_save"
+                category = "Sink & Storage"
+              }
 
               items.push({
                 id: `${manifest.id}:${node.id}`,
                 title: node.name,
-                category: manifest.category || "Bioinformatics Tool",
+                category,
                 description: node.description || manifest.description,
-                type: "dynamicTool",
-                kind: "tool",
+                type: nodeType,
+                kind: kind,
                 tool_id: manifest.id,
                 node_id: node.id,
                 node_type: node.node_type,
@@ -168,52 +120,10 @@ export function WorkflowNodePalette({ isOpen = true, onClose, onAddNode }: Workf
                 icon: IconComponent,
               })
             })
-          } else {
-            // Legacy single-node manifest fallback
-            const inputs: WorkflowPort[] = (manifest.inputs || []).map((inp) => ({
-              id: inp.id,
-              name: inp.name,
-              socket_type: (inp.socket_type as any) || "any",
-              direction: "input",
-            }))
-
-            const outputs: WorkflowPort[] = (manifest.outputs || []).map((out) => ({
-              id: out.id,
-              name: out.name,
-              socket_type: (out.socket_type as any) || "any",
-              direction: "output",
-            }))
-
-            const defaultParams: Record<string, any> = {}
-            manifest.params?.forEach((p) => {
-              defaultParams[p.id] = p.default
-            })
-
-            items.push({
-              id: manifest.id,
-              title: `${manifest.name} v${manifest.version}`,
-              category: manifest.category || "Bioinformatics Tool",
-              description: manifest.description,
-              type: "dynamicTool",
-              kind: "tool",
-              tool_id: manifest.id,
-              manifest,
-              inputs,
-              outputs,
-              defaultParams,
-              icon: Dna,
-            })
           }
         })
 
       setManifestItems(items)
-
-      // Auto-expand categories with newly loaded items
-      setExpandedCategories((prev) => {
-        const next = new Set(prev)
-        items.forEach((it) => next.add(it.category))
-        return next
-      })
     }
 
     loadManifests()
@@ -222,309 +132,291 @@ export function WorkflowNodePalette({ isOpen = true, onClose, onAddNode }: Workf
     }
   }, [])
 
-  const allItems = React.useMemo(() => {
-    return [...BUILTIN_NODES, ...manifestItems]
+  const allTemplates = React.useMemo(() => {
+    return manifestItems
   }, [manifestItems])
 
-  const filteredItems = React.useMemo(() => {
-    const q = searchQuery.toLowerCase().trim()
-    if (!q) return allItems
-    return allItems.filter(
-      (item) =>
-        item.title.toLowerCase().includes(q) ||
-        item.category.toLowerCase().includes(q) ||
-        item.description.toLowerCase().includes(q)
+  const filteredTemplates = React.useMemo(() => {
+    if (!searchQuery.trim()) return allTemplates
+    const q = searchQuery.toLowerCase()
+    return allTemplates.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.category.toLowerCase().includes(q) ||
+        t.inputs.some((i) => i.name.toLowerCase().includes(q)) ||
+        t.outputs.some((o) => o.name.toLowerCase().includes(q))
     )
-  }, [allItems, searchQuery])
+  }, [allTemplates, searchQuery])
 
-  // Group items by category
   const categories = React.useMemo(() => {
-    const map = new Map<string, NodePaletteItem[]>()
-    filteredItems.forEach((item) => {
-      const cat = item.category || "General"
-      const existing = map.get(cat) || []
-      existing.push(item)
-      map.set(cat, existing)
+    const cats: Record<string, NodePaletteItem[]> = {}
+    filteredTemplates.forEach((t) => {
+      if (!cats[t.category]) cats[t.category] = []
+      cats[t.category].push(t)
     })
-    return Array.from(map.entries())
-  }, [filteredItems])
+    return cats
+  }, [filteredTemplates])
 
-  const toggleCategory = (categoryName: string) => {
+  const toggleCategory = (cat: string) => {
     setExpandedCategories((prev) => {
       const next = new Set(prev)
-      if (next.has(categoryName)) {
-        next.delete(categoryName)
-      } else {
-        next.add(categoryName)
-      }
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
       return next
     })
   }
 
-  const handleDragStart = (e: React.DragEvent, item: NodePaletteItem) => {
-    setHoveredItem(null)
-    e.dataTransfer.setData("application/reactflow/node", JSON.stringify(item))
-    e.dataTransfer.effectAllowed = "move"
-  }
-
   const handleMouseEnterItem = (e: React.MouseEvent<HTMLDivElement>, item: NodePaletteItem) => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
-    if (!asideRef.current) return
+    const targetRect = e.currentTarget.getBoundingClientRect()
+    const asideRect = asideRef.current?.getBoundingClientRect()
+    const offsetTop = asideRect ? targetRect.top - asideRect.top : targetRect.top
+    const offsetBottom = asideRect ? asideRect.bottom - targetRect.bottom : window.innerHeight - targetRect.bottom
+    const asideHeight = asideRect ? asideRect.height : window.innerHeight
 
-    const asideRect = asideRef.current.getBoundingClientRect()
-    const itemRect = e.currentTarget.getBoundingClientRect()
-    const relativeTop = itemRect.top - asideRect.top
-    const cardEstimatedHeight = 260
-    const clampedTop = Math.max(8, Math.min(asideRect.height - cardEstimatedHeight - 8, relativeTop))
+    // When hovering on items in the lower portion of the palette, anchor the preview card's bottom
+    // to the item's bottom so the card expands upwards directly next to the node item.
+    const isLowerPortion = offsetTop > asideHeight * 0.45 || offsetBottom < 280
 
-    hoverTimeoutRef.current = setTimeout(() => {
-      setHoveredItem({
-        item,
-        top: clampedTop,
-      })
-    }, 40)
+    if (isLowerPortion) {
+      const clampedBottom = Math.max(12, Math.min(asideHeight - 120, offsetBottom - 4))
+      hoverTimeoutRef.current = setTimeout(() => {
+        setHoveredItem({
+          item,
+          bottom: clampedBottom,
+        })
+      }, 140)
+    } else {
+      const clampedTop = Math.max(12, Math.min(asideHeight - 120, offsetTop - 4))
+      hoverTimeoutRef.current = setTimeout(() => {
+        setHoveredItem({
+          item,
+          top: clampedTop,
+        })
+      }, 140)
+    }
   }
 
   const handleMouseLeaveItem = () => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
     hoverTimeoutRef.current = setTimeout(() => {
       setHoveredItem(null)
-    }, 100)
+    }, 120)
   }
+
+  const onDragStart = (e: React.DragEvent, template: NodePaletteItem) => {
+    setHoveredItem(null)
+    registerDragTemplate(template)
+    e.dataTransfer.setData("application/reactflow/node", template.id)
+    e.dataTransfer.effectAllowed = "move"
+  }
+
+  if (!isOpen) return null
 
   return (
     <aside
       ref={asideRef}
-      className={cn(
-        "h-full border-r bg-card/70 backdrop-blur-md flex flex-col z-20 shrink-0 select-none relative transition-all duration-300 ease-in-out overflow-visible",
-        isOpen
-          ? "w-64 sm:w-72 border-border/60 opacity-100 translate-x-0"
-          : "w-0 border-transparent opacity-0 -translate-x-full pointer-events-none"
-      )}
+      className="relative w-64 md:w-72 bg-card/95 backdrop-blur-md border-r border-border/80 flex flex-col shrink-0 select-none shadow-sm z-20 h-full min-h-0"
     >
-      <div className="w-64 sm:w-72 h-full flex flex-col shrink-0 overflow-hidden">
-        {/* Top Header */}
-        <div className="p-3 border-b border-border/60 flex items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="size-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-              <Boxes className="size-3.5" />
-            </div>
-            <div>
-              <h3 className="text-xs font-semibold text-foreground">Node Tree</h3>
-              <p className="text-[10px] text-muted-foreground">Components & tools</p>
-            </div>
+      {/* Header */}
+      <div className="p-3 border-b border-border/60 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+            <Layers className="size-4" />
           </div>
-
-          {onClose && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              className="size-7 p-0 text-muted-foreground hover:text-foreground cursor-pointer"
-              title="Collapse Palette"
-            >
-              <PanelLeftClose className="size-3.5" />
-            </Button>
-          )}
-        </div>
-
-        {/* Search Input */}
-        <div className="p-2.5 border-b border-border/50 shrink-0">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search nodes & tools..."
-              className="h-8 pl-8 text-xs bg-background/50"
-            />
+          <div>
+            <h2 className="text-xs font-semibold text-foreground tracking-tight leading-none">Node Palette</h2>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Drag onto canvas to compose</p>
           </div>
         </div>
-
-        {/* Nodes File Tree Scroll Area */}
-        <ScrollArea className="flex-1 px-2 py-2">
-          <div className="flex flex-col gap-1 pb-4">
-            {categories.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
-                <Boxes className="size-8 opacity-40 mb-2" />
-                <p className="text-xs">No matching nodes found</p>
-              </div>
-            ) : (
-              categories.map(([categoryName, items]) => {
-                const isExpanded = searchQuery.trim().length > 0 || expandedCategories.has(categoryName)
-
-                return (
-                  <div key={categoryName} className="flex flex-col">
-                    {/* Category Folder Header Row */}
-                    <button
-                      type="button"
-                      onClick={() => toggleCategory(categoryName)}
-                      className="flex w-full items-center justify-between gap-1.5 px-2 py-1.5 rounded-md hover:bg-muted/60 text-foreground transition-colors cursor-pointer text-left group/cat"
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <ChevronRight
-                          className={cn(
-                            "size-3.5 text-muted-foreground transition-transform duration-200 shrink-0",
-                            isExpanded && "rotate-90 text-foreground"
-                          )}
-                        />
-                        {isExpanded ? (
-                          <FolderOpen className="size-3.5 text-primary shrink-0" />
-                        ) : (
-                          <Folder className="size-3.5 text-muted-foreground shrink-0 group-hover/cat:text-foreground" />
-                        )}
-                        <span className="text-xs font-semibold truncate text-foreground/90">
-                          {categoryName}
-                        </span>
-                      </div>
-
-                      <Badge
-                        variant="secondary"
-                        className="text-[9px] px-1.5 py-0 h-4 font-normal text-muted-foreground group-hover/cat:text-foreground"
-                      >
-                        {items.length}
-                      </Badge>
-                    </button>
-
-                    {/* Smooth Collapsible Leaf Items inside Folder */}
-                    <div
-                      className={cn(
-                        "grid transition-all duration-200 ease-in-out overflow-hidden",
-                        isExpanded ? "grid-rows-[1fr] opacity-100 my-0.5" : "grid-rows-[0fr] opacity-0 pointer-events-none"
-                      )}
-                    >
-                      <div className="overflow-hidden">
-                        <div className="flex flex-col pl-4 ml-2 border-l border-border/50 gap-0.5 py-0.5">
-                          {items.map((item) => {
-                            const IconComponent = item.icon
-
-                            return (
-                              <div
-                                key={item.id}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, item)}
-                                onDoubleClick={() => onAddNode?.(item)}
-                                onMouseEnter={(e) => handleMouseEnterItem(e, item)}
-                                onMouseLeave={handleMouseLeaveItem}
-                                className="group/item relative flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-accent/60 hover:text-accent-foreground transition-all cursor-grab active:cursor-grabbing border border-transparent hover:border-border/80"
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <div className="size-5 rounded-md bg-muted/80 flex items-center justify-center text-muted-foreground group-hover/item:text-primary group-hover/item:bg-primary/10 transition-colors shrink-0">
-                                    <IconComponent className="size-3" />
-                                  </div>
-                                  <span className="text-xs font-medium truncate text-foreground/90 group-hover/item:text-foreground">
-                                    {item.title}
-                                  </span>
-                                </div>
-
-                                <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      onAddNode?.(item)
-                                    }}
-                                    className="size-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
-                                    title="Add node to canvas"
-                                  >
-                                    <Plus className="size-3" />
-                                  </button>
-                                  <GripVertical className="size-3 text-muted-foreground/50" />
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </div>
-        </ScrollArea>
       </div>
 
-      {/* Unclipped High-Fidelity Miniature Node Preview Card */}
-      {isOpen && hoveredItem && (
+      {/* Search Input */}
+      <div className="p-2.5 border-b border-border/60 bg-muted/20">
+        <div className="relative flex items-center">
+          <Search className="absolute left-2.5 size-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search nodes, ports, tools..."
+            className="pl-8 h-8 rounded-lg bg-background border-border/70 text-xs placeholder:text-xs placeholder:text-muted-foreground shadow-xs"
+          />
+        </div>
+      </div>
+
+      {/* Category Tree / Node Items */}
+      <ScrollArea className="flex-1 h-full min-h-0 px-2 py-2">
+        <div className="flex flex-col gap-3">
+          {Object.entries(categories).map(([category, items]) => {
+            const isExpanded = expandedCategories.has(category)
+            return (
+              <div key={category} className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(category)}
+                  className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-muted/50 text-[11px] font-semibold text-foreground/80 tracking-wide transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <ChevronRight
+                      className={cn(
+                        "size-3 text-muted-foreground transition-transform duration-200",
+                        isExpanded && "rotate-90"
+                      )}
+                    />
+                    <span>{category}</span>
+                  </div>
+                  <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 font-mono font-normal">
+                    {items.length}
+                  </Badge>
+                </button>
+
+                {isExpanded && (
+                  <div className="flex flex-col gap-1 pl-2">
+                    {items.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <div
+                          key={item.id}
+                          draggable
+                          onDragStart={(e) => onDragStart(e, item)}
+                          onMouseEnter={(e) => handleMouseEnterItem(e, item)}
+                          onMouseLeave={handleMouseLeaveItem}
+                          onDoubleClick={() => onAddNode?.(item)}
+                          className="group relative flex items-center gap-2.5 p-2 rounded-xl border border-border/60 bg-card hover:bg-accent/40 hover:border-primary/40 hover:shadow-xs transition-all duration-150 cursor-grab active:cursor-grabbing text-left"
+                        >
+                          <div className="size-7 rounded-lg bg-muted/60 group-hover:bg-primary/10 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors shrink-0">
+                            <Icon className="size-3.5" />
+                          </div>
+
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-xs font-semibold text-foreground tracking-tight truncate group-hover:text-primary transition-colors">
+                                {item.title}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-muted-foreground line-clamp-1 leading-tight mt-0.5">
+                              {item.description}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {filteredTemplates.length === 0 && (
+            <div className="p-6 flex flex-col items-center justify-center text-center gap-2 text-muted-foreground">
+              <Sparkles className="size-5 opacity-40" />
+              <p className="text-xs font-medium">No workflow nodes found</p>
+              <p className="text-[10px] max-w-[180px]">Try searching for different keywords or clear query.</p>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+
+      {/* Hover Floating Card */}
+      {hoveredItem && (
         <div
-          style={{ top: `${hoveredItem.top}px` }}
-          className="absolute left-full ml-3 w-80 z-50 rounded-xl border border-border bg-card shadow-2xl overflow-hidden pointer-events-none animate-in fade-in-0 zoom-in-95 duration-100"
+          style={
+            hoveredItem.bottom !== undefined
+              ? { bottom: `${hoveredItem.bottom}px` }
+              : { top: `${hoveredItem.top}px` }
+          }
+          onMouseEnter={() => {
+            if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+          }}
+          onMouseLeave={() => setHoveredItem(null)}
+          className="absolute left-[calc(100%+8px)] w-[340px] max-h-[calc(100vh-80px)] rounded-xl border border-border/80 bg-popover/95 backdrop-blur-xl shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 pointer-events-auto flex flex-col overflow-hidden text-popover-foreground"
         >
-          {/* Card Header (Matches BaseNodeCard) */}
-          <div className="flex w-full flex-col border-b border-border/80 bg-muted/20">
-            <div className="flex w-full items-center justify-between gap-2 px-4 py-2.5">
-              <div className="flex items-center gap-2 overflow-hidden">
-                <hoveredItem.item.icon className="size-4 text-foreground/80 shrink-0" />
-                <span className="text-sm font-semibold truncate text-foreground tracking-tight">
-                  {hoveredItem.item.title}
-                </span>
+          {/* Card Header */}
+          <div className="p-3.5 border-b border-border/60 bg-muted/20 flex flex-col gap-1.5 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="size-6 rounded-md bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                <hoveredItem.item.icon className="size-3.5" />
               </div>
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
-                {hoveredItem.item.category}
-              </Badge>
+              <h3 className="text-xs font-bold text-foreground truncate" title={hoveredItem.item.title}>
+                {hoveredItem.item.title}
+              </h3>
             </div>
-
-            <div className="px-4 pb-2.5">
-              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                {hoveredItem.item.description}
-              </p>
-            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              {hoveredItem.item.description}
+            </p>
           </div>
 
-          {/* Sockets Section (Inputs Left, Outputs Right) */}
+          {/* Sockets Section (Inputs & Outputs strictly single line) */}
           {(hoveredItem.item.inputs.length > 0 || hoveredItem.item.outputs.length > 0) && (
-            <div className="flex flex-col py-1.5 border-b border-border/60 bg-muted/30 gap-1 px-4 text-xs">
-              {hoveredItem.item.inputs.map((inp, idx) => {
-                const color = getSocketColor(inp.socket_type, idx)
-                return (
-                  <div key={`in_${inp.id}`} className="flex items-center justify-between gap-2 text-foreground/90">
-                    <div className="flex items-center gap-1.5">
-                      <span className="size-2 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: color }} />
-                      <span className="font-medium">{inp.name}</span>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {inp.socket_type} (In)
-                    </span>
+            <div className="flex flex-col p-3 gap-2.5 flex-1 min-h-0 overflow-y-auto">
+              {/* Inputs */}
+              {hoveredItem.item.inputs.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80 px-1">
+                    <span>Inputs</span>
+                    <span className="font-mono">{hoveredItem.item.inputs.length}</span>
                   </div>
-                )
-              })}
+                  <div className="flex flex-col gap-0.5 rounded-lg bg-muted/30 border border-border/40 p-1">
+                    {hoveredItem.item.inputs.map((inp, idx) => {
+                      const firstMatcher = inp.accepted_types?.[0]
+                      const color = getSocketColor(firstMatcher, idx)
+                      const typeLabel = formatPortType(inp)
+                      return (
+                        <div
+                          key={`in_${inp.id}`}
+                          className="flex items-center justify-between gap-2 px-1.5 py-1 rounded hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <span className="size-2 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: color }} />
+                            <span className="text-xs font-medium text-foreground/90 truncate" title={inp.name}>
+                              {inp.name}
+                            </span>
+                          </div>
+                          <span className="shrink-0 font-mono text-[9px] text-muted-foreground bg-background/80 border border-border/50 px-1.5 py-0.5 rounded leading-none">
+                            {typeLabel}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
-              {hoveredItem.item.outputs.map((out, idx) => {
-                const color = getSocketColor(out.socket_type, idx + 2)
-                return (
-                  <div key={`out_${out.id}`} className="flex items-center justify-between gap-2 text-foreground/90">
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      (Out) {out.socket_type}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium">{out.name}</span>
-                      <span className="size-2 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: color }} />
-                    </div>
+              {/* Outputs */}
+              {hoveredItem.item.outputs.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {hoveredItem.item.inputs.length > 0 && <Separator className="my-0.5 opacity-60" />}
+                  <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80 px-1">
+                    <span>Outputs</span>
+                    <span className="font-mono">{hoveredItem.item.outputs.length}</span>
                   </div>
-                )
-              })}
+                  <div className="flex flex-col gap-0.5 rounded-lg bg-muted/30 border border-border/40 p-1">
+                    {hoveredItem.item.outputs.map((out, idx) => {
+                      const color = getSocketColor(out.socket_type, idx + 2)
+                      const typeLabel = formatPortType(out)
+                      return (
+                        <div
+                          key={`out_${out.id}`}
+                          className="flex items-center justify-between gap-2 px-1.5 py-1 rounded hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <span className="size-2 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: color }} />
+                            <span className="text-xs font-medium text-foreground/90 truncate" title={out.name}>
+                              {out.name}
+                            </span>
+                          </div>
+                          <span className="shrink-0 font-mono text-[9px] text-muted-foreground bg-background/80 border border-border/50 px-1.5 py-0.5 rounded leading-none">
+                            {typeLabel}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-
-          {/* Configurable Parameters Summary */}
-          {Object.keys(hoveredItem.item.defaultParams || {}).length > 0 && (
-            <div className="px-4 py-2 flex items-center justify-between text-xs text-muted-foreground border-b border-border/40">
-              <div className="flex items-center gap-1.5">
-                <Sliders className="size-3 text-muted-foreground" />
-                <span>Configurable Params</span>
-              </div>
-              <span className="font-semibold text-foreground font-mono text-[11px]">
-                {Object.keys(hoveredItem.item.defaultParams).length}
-              </span>
-            </div>
-          )}
-
-          {/* Card Footer */}
-          <div className="px-4 py-1.5 bg-muted/50 flex items-center justify-between text-[10px] text-muted-foreground font-medium">
-            <span>Drag or double-click to add to canvas</span>
-            <ArrowRight className="size-3 text-primary" />
-          </div>
         </div>
       )}
     </aside>

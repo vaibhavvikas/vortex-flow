@@ -1,0 +1,14 @@
+# apps/cli/Cargo.toml
+[package]
+name = "vortexflow-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
+
+[dependencies]
+vortexflow-types = { path = "../../crates/types" }
+vortexflow-workflow = { path = "../../crates/workflow" }
+vortexflow-engine = { path = "../../crates/engine" }

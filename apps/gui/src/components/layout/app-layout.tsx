@@ -86,7 +86,7 @@ export function AppLayout() {
     <div className="flex flex-col flex-1 w-full min-h-0 overflow-hidden">
       {/* Middle Workspace Layout */}
       <div className="relative flex-1 flex w-full min-h-0 overflow-hidden [transform:translateZ(0)]">
-        <SidebarProvider className="flex flex-1 w-full h-full min-h-0 overflow-hidden min-h-full">
+        <SidebarProvider className="flex flex-1 w-full h-full min-h-0 overflow-hidden">
           <AppSidebar
             activeTab={activeTab}
             setActiveTab={handleTabChange}

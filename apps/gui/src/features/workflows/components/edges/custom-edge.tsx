@@ -64,7 +64,7 @@ export const CustomWorkflowEdge = React.memo(function CustomWorkflowEdge({
         onMouseLeave={() => setIsHovered(false)}
       />
 
-      {/* Rendered Langflow Bezier Edge */}
+      {/* Rendered Bezier Edge */}
       <BaseEdge
         path={edgePath}
         markerEnd={markerEnd}

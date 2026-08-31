@@ -25,6 +25,7 @@ pub fn workflow_routes() -> Router<AppState> {
         .route("/api/workflow/run", post(run_workflow_handler))
         .route("/api/workflow/stream", post(stream_workflow_handler))
         .route("/api/workflow/pick-folder", post(pick_folder_handler))
+        .route("/api/workflow/peek-columns", post(peek_columns_handler))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -46,19 +47,19 @@ async fn pick_folder_handler() -> Json<PickFolderResponse> {
         })
         .await;
 
-        if let Ok(Ok(out)) = output {
-            if out.status.success() {
-                let path_str = String::from_utf8_lossy(&out.stdout)
-                    .trim()
-                    .trim_end_matches('/')
-                    .to_string();
-                if !path_str.is_empty() {
-                    return Json(PickFolderResponse {
-                        selected: true,
-                        path: Some(path_str),
-                        error: None,
-                    });
-                }
+        if let Ok(Ok(out)) = output
+            && out.status.success()
+        {
+            let path_str = String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .trim_end_matches('/')
+                .to_string();
+            if !path_str.is_empty() {
+                return Json(PickFolderResponse {
+                    selected: true,
+                    path: Some(path_str),
+                    error: None,
+                });
             }
         }
     }
@@ -93,6 +94,93 @@ async fn pick_folder_handler() -> Json<PickFolderResponse> {
     })
 }
 
+#[derive(Debug, Deserialize)]
+pub struct PeekColumnsRequest {
+    pub file_path: String,
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PeekColumnsResponse {
+    pub success: bool,
+    pub columns: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// POST /api/workflow/peek-columns
+///
+/// # Security
+/// - Canonicalizes the requested path to resolve `..` components and symlinks.
+/// - Rejects any path that does not reside under the user's home directory.
+/// - Rejects non-regular-files (device nodes, pipes, sockets).
+async fn peek_columns_handler(
+    Json(req): Json<PeekColumnsRequest>,
+) -> Json<PeekColumnsResponse> {
+    // --- Path-traversal guard ---
+    let raw_path = PathBuf::from(&req.file_path);
+
+    // canonicalize resolves symlinks and removes `..` components
+    let canonical = match raw_path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            return Json(PeekColumnsResponse {
+                success: false,
+                columns: vec![],
+                error: Some("File not found or inaccessible".to_string()),
+            })
+        }
+    };
+
+    // Scope to user home directory
+    let allowed_root = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+    if !canonical.starts_with(&allowed_root) {
+        return Json(PeekColumnsResponse {
+            success: false,
+            columns: vec![],
+            error: Some("Access denied: path is outside the permitted scope".to_string()),
+        });
+    }
+
+    // Reject non-regular files (devices, sockets, fifos, etc.)
+    match canonical.metadata() {
+        Ok(meta) if meta.is_file() => {}
+        _ => {
+            return Json(PeekColumnsResponse {
+                success: false,
+                columns: vec![],
+                error: Some("Path does not point to a regular file".to_string()),
+            })
+        }
+    }
+
+    // File limit: reject files over 100 MB to avoid blocking the executor thread
+    const MAX_PEEK_BYTES: u64 = 100 * 1024 * 1024;
+    if let Ok(meta) = canonical.metadata()
+        && meta.len() > MAX_PEEK_BYTES
+    {
+        return Json(PeekColumnsResponse {
+            success: false,
+            columns: vec![],
+            error: Some("File too large for header preview (>100 MB)".to_string()),
+        });
+    }
+
+    match vortexflow_engine::nodes::peek_columns(&canonical, req.format.as_deref()) {
+        Ok(columns) => Json(PeekColumnsResponse {
+            success: true,
+            columns,
+            error: None,
+        }),
+        Err(e) => Json(PeekColumnsResponse {
+            success: false,
+            columns: vec![],
+            error: Some(e),
+        }),
+    }
+}
+
 /// GET /api/workflow/templates/resfinder
 async fn get_resfinder_template() -> Json<WorkflowGraph> {
     Json(WorkflowGraph::template_resfinder())
@@ -103,6 +191,8 @@ pub struct ValidateResponse {
     pub is_valid: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_order: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -122,6 +212,7 @@ async fn validate_graph_handler(
             Json(ValidateResponse {
                 is_valid: true,
                 execution_order: Some(report.execution_order),
+                warnings: report.warnings,
                 error: None,
                 error_type: None,
                 invalid_node_id: None,
@@ -145,6 +236,7 @@ async fn validate_graph_handler(
                 Json(ValidateResponse {
                     is_valid: false,
                     execution_order: None,
+                    warnings: vec![],
                     error: Some(err.to_string()),
                     error_type: Some(error_type.to_string()),
                     invalid_node_id,

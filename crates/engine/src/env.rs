@@ -3,36 +3,45 @@ use tracing::info;
 use vortexflow_workflow::{DatabaseRequirement, ToolManifest};
 use crate::error::EngineError;
 
-/// Manages isolated tool environments within the user's ~/.vortexflow/ directory
+/// Manages self-contained tool extensions within the user's ~/.vortexflow/extensions/ directory
 #[derive(Debug, Clone)]
 pub struct EnvironmentManager {
-    base_dir: PathBuf,
-    db_base_dir: PathBuf,
+    extensions_dir: PathBuf,
 }
 
 impl Default for EnvironmentManager {
     fn default() -> Self {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let base_dir = home.join(".vortexflow").join("envs");
-        let db_base_dir = home.join(".vortexflow").join("databases");
-        Self { base_dir, db_base_dir }
+        let extensions_dir = home.join(".vortexflow").join("extensions");
+        Self { extensions_dir }
     }
 }
 
 impl EnvironmentManager {
     pub fn new(base_dir: PathBuf) -> Self {
-        let db_base_dir = base_dir.parent().unwrap_or(&base_dir).join("databases");
-        Self { base_dir, db_base_dir }
+        let extensions_dir = if base_dir.ends_with("extensions") {
+            base_dir
+        } else if base_dir.ends_with("envs") || base_dir.ends_with("databases") {
+            base_dir.parent().unwrap_or(&base_dir).join("extensions")
+        } else {
+            base_dir.join("extensions")
+        };
+        Self { extensions_dir }
     }
 
-    /// Gets the path to a tool's isolated environment directory
-    pub fn get_tool_env_path(&self, tool_id: &str, version: &str) -> PathBuf {
-        self.base_dir.join(format!("{}-{}", tool_id, version))
+    /// Gets the root bundle directory for a tool extension (e.g. ~/.vortexflow/extensions/resfinder)
+    pub fn get_tool_dir(&self, tool_id: &str) -> PathBuf {
+        self.extensions_dir.join(tool_id)
     }
 
-    /// Gets the path to a reference database directory
-    pub fn get_database_path(&self, db_name: &str) -> PathBuf {
-        self.db_base_dir.join(db_name)
+    /// Gets the path to a tool's isolated runtime environment (e.g. ~/.vortexflow/extensions/resfinder/env)
+    pub fn get_tool_env_path(&self, tool_id: &str, _version: &str) -> PathBuf {
+        self.get_tool_dir(tool_id).join("env")
+    }
+
+    /// Gets the path to a companion database or data directory (e.g. ~/.vortexflow/extensions/resfinder/data/resfinder_db)
+    pub fn get_database_path(&self, subpath: &str) -> PathBuf {
+        self.extensions_dir.join(subpath)
     }
 
     /// Checks if a tool environment is already provisioned
@@ -66,10 +75,10 @@ impl EnvironmentManager {
         Ok(env_path)
     }
 
-    /// Ensures database dependencies are provisioned in ~/.vortexflow/databases/
+    /// Ensures database dependencies are provisioned inside the tool's extension data directory
     pub async fn ensure_databases(&self, databases: &[DatabaseRequirement], logs: &mut Vec<String>) -> Result<Vec<(String, PathBuf)>, EngineError> {
         let mut db_paths = Vec::new();
-        tokio::fs::create_dir_all(&self.db_base_dir).await?;
+        tokio::fs::create_dir_all(&self.extensions_dir).await?;
 
         for db in databases {
             let target_path = self.get_database_path(&db.destination_subpath);

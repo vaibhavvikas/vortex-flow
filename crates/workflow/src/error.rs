@@ -1,19 +1,19 @@
 use thiserror::Error;
-use crate::types::SocketType;
+use crate::types::{SocketMatcher, SocketType};
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum WorkflowError {
     #[error("Cycle detected in workflow involving nodes: {cycle_nodes:?}")]
     CycleDetected { cycle_nodes: Vec<String> },
 
-    #[error("Incompatible socket connection from {source_node}.{source_port} ({source_type:?}) to {target_node}.{target_port} ({target_type:?})")]
+    #[error("Incompatible socket connection from {source_node}.{source_port} ({source_type:?}) to {target_node}.{target_port} (Accepted: {target_accepted:?})")]
     IncompatibleSocketTypes {
         source_node: String,
         source_port: String,
-        source_type: SocketType,
+        source_type: Box<SocketType>,
         target_node: String,
         target_port: String,
-        target_type: SocketType,
+        target_accepted: Box<[SocketMatcher]>,
     },
 
     #[error("Node '{node_id}' referenced in edge not found in graph")]

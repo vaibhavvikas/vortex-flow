@@ -59,11 +59,10 @@ pub async fn execute_folder_input(
     for entry in WalkDir::new(&dir_path).max_depth(2).into_iter().filter_map(|e| e.ok()) {
         if entry.file_type().is_file() {
             let path = entry.path();
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if extensions.iter().any(|&target| target.eq_ignore_ascii_case(ext)) {
+            if let Some(ext) = path.extension().and_then(|e| e.to_str())
+                && extensions.iter().any(|&target| target.eq_ignore_ascii_case(ext)) {
                     matched_files.push(path.to_string_lossy().to_string());
                 }
-            }
         }
     }
 

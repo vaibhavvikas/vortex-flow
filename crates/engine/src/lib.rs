@@ -39,8 +39,8 @@ mod tests {
         }
 
         // Pre-create test databases so unit tests don't do network cloning
-        tokio::fs::create_dir_all(env_mgr.get_database_path("db/resfinder_db")).await.unwrap();
-        tokio::fs::create_dir_all(env_mgr.get_database_path("db/pointfinder_db")).await.unwrap();
+        tokio::fs::create_dir_all(env_mgr.get_database_path("resfinder/data/resfinder_db")).await.unwrap();
+        tokio::fs::create_dir_all(env_mgr.get_database_path("resfinder/data/pointfinder_db")).await.unwrap();
 
         let loader = std::sync::Arc::new(vortexflow_workflow::ManifestLoader::new());
         let executor = WorkflowExecutor::new(env_mgr, loader);

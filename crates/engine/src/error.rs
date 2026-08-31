@@ -4,7 +4,7 @@ use vortexflow_workflow::WorkflowError;
 #[derive(Debug, Error)]
 pub enum EngineError {
     #[error("Workflow validation failed: {0}")]
-    Validation(#[from] WorkflowError),
+    Validation(#[source] Box<WorkflowError>),
 
     #[error("Environment error: {0}")]
     Environment(String),
@@ -24,6 +24,15 @@ pub enum EngineError {
     #[error("Subprocess execution failed: {message}")]
     SubprocessFailed { message: String },
 
+    #[error("Unknown placeholder '{{{placeholder}}}' in an execution argument template")]
+    InvalidArgumentTemplate { placeholder: String },
+
     #[error("JSON serialization error: {0}")]
     Json(#[from] serde_json::Error),
+}
+
+impl From<WorkflowError> for EngineError {
+    fn from(error: WorkflowError) -> Self {
+        Self::Validation(Box::new(error))
+    }
 }

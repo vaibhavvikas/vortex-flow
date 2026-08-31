@@ -112,10 +112,10 @@ async fn start_download_handler(
     let target_tasks: Vec<_> = all_tasks
         .into_iter()
         .filter(|t| {
-            if let Some(ref fmt) = body.format {
-                if t.format.to_lowercase() != fmt.to_lowercase() {
-                    return false;
-                }
+            if let Some(ref fmt) = body.format
+                && t.format.to_lowercase() != fmt.to_lowercase()
+            {
+                return false;
             }
             if let Some(ref ids) = body.file_ids {
                 if !ids.is_empty() {
@@ -205,27 +205,25 @@ async fn resume_download_handler(
 
     let _ = state.collection_service.update_file_download_progress(&id, "downloading", None, None, None);
 
-    if state.download_manager.resume_task(&id).await.is_err() {
-        if let Ok(tasks) = state.collection_service.get_download_tasks() {
-            if let Some(task) = tasks.into_iter().find(|t| t.file_id == id || t.accession == id) {
-                if let Some(url) = task.download_url {
-                    let Ok(destination_path) = download_destination(&base_dir, &task.format, &task.file_name) else {
-                        return (StatusCode::BAD_REQUEST, "Unsafe download destination").into_response();
-                    };
+    if state.download_manager.resume_task(&id).await.is_err()
+        && let Ok(tasks) = state.collection_service.get_download_tasks()
+        && let Some(task) = tasks.into_iter().find(|t| t.file_id == id || t.accession == id)
+        && let Some(url) = task.download_url
+    {
+        let Ok(destination_path) = download_destination(&base_dir, &task.format, &task.file_name) else {
+            return (StatusCode::BAD_REQUEST, "Unsafe download destination").into_response();
+        };
 
-                    let descriptor = DownloadTaskDescriptor {
-                        id: task.file_id.clone(),
-                        group_id: Some(task.accession.clone()),
-                        url,
-                        destination_path,
-                        temp_dir: temp_dir.clone(),
-                        expected_size_bytes: task.file_size_bytes,
-                        priority: 10,
-                    };
-                    let _ = state.download_manager.submit_task(descriptor).await;
-                }
-            }
-        }
+        let descriptor = DownloadTaskDescriptor {
+            id: task.file_id.clone(),
+            group_id: Some(task.accession.clone()),
+            url,
+            destination_path,
+            temp_dir: temp_dir.clone(),
+            expected_size_bytes: task.file_size_bytes,
+            priority: 10,
+        };
+        let _ = state.download_manager.submit_task(descriptor).await;
     }
 
     (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response()
@@ -259,31 +257,29 @@ async fn retry_download_handler(
 
     let _ = state.collection_service.update_file_download_progress(&id, "queued", Some(0), None, None);
 
-    if state.download_manager.retry_task(&id).await.is_err() {
-        if let Ok(tasks) = state.collection_service.get_download_tasks() {
-            if let Some(task) = tasks.into_iter().find(|t| t.file_id == id || t.accession == id) {
-                if let Some(url) = task.download_url {
-                    let Ok(destination_path) = download_destination(&base_dir, &task.format, &task.file_name) else {
-                        return (StatusCode::BAD_REQUEST, "Unsafe download destination").into_response();
-                    };
+    if state.download_manager.retry_task(&id).await.is_err()
+        && let Ok(tasks) = state.collection_service.get_download_tasks()
+        && let Some(task) = tasks.into_iter().find(|t| t.file_id == id || t.accession == id)
+        && let Some(url) = task.download_url
+    {
+        let Ok(destination_path) = download_destination(&base_dir, &task.format, &task.file_name) else {
+            return (StatusCode::BAD_REQUEST, "Unsafe download destination").into_response();
+        };
 
-                    if destination_path.exists() {
-                        let _ = tokio::fs::remove_file(&destination_path).await;
-                    }
-
-                    let descriptor = DownloadTaskDescriptor {
-                        id: task.file_id.clone(),
-                        group_id: Some(task.accession.clone()),
-                        url,
-                        destination_path,
-                        temp_dir: temp_dir.clone(),
-                        expected_size_bytes: task.file_size_bytes,
-                        priority: 10,
-                    };
-                    let _ = state.download_manager.submit_task(descriptor).await;
-                }
-            }
+        if destination_path.exists() {
+            let _ = tokio::fs::remove_file(&destination_path).await;
         }
+
+        let descriptor = DownloadTaskDescriptor {
+            id: task.file_id.clone(),
+            group_id: Some(task.accession.clone()),
+            url,
+            destination_path,
+            temp_dir: temp_dir.clone(),
+            expected_size_bytes: task.file_size_bytes,
+            priority: 10,
+        };
+        let _ = state.download_manager.submit_task(descriptor).await;
     }
 
     (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response()

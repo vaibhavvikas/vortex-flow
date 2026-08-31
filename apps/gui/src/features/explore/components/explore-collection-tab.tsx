@@ -70,7 +70,7 @@ import {
   type GenomePackageLayers,
   type SraRecord,
 } from "../services/sra-service"
-import { getApiUrl } from "@/lib/api-config"
+import { openApiEventStream } from "@/lib/api-client"
 
 function renderMutedValue(val?: string | null): React.ReactNode {
   if (!val || !val.trim()) return <span className="text-muted-foreground/35 font-mono select-none">—</span>
@@ -110,26 +110,19 @@ export function ExploreCollectionTab({
 
   // Live refetch collection whenever background downloads finish
   React.useEffect(() => {
-    let eventSource: EventSource | undefined
-    let disposed = false
-    void getApiUrl("/api/downloads/events", true).then((url) => {
-      if (disposed) return
-      eventSource = new EventSource(url)
-      eventSource.onmessage = (event) => {
-        try {
-          if (!event.data || !event.data.trim()) return
-          const parsed = JSON.parse(event.data)
+    const closeStream = openApiEventStream("/api/downloads/events", (data) => {
+      try {
+          if (!data.trim()) return
+          const parsed = JSON.parse(data)
           if (parsed.TaskFinished || parsed.status === "completed") {
             queryClient.invalidateQueries({ queryKey: ["collection"] })
           }
         } catch {
           // ignore
         }
-      }
     })
     return () => {
-      disposed = true
-      eventSource?.close()
+      closeStream()
     }
   }, [queryClient])
   const collectionRowSelection = useSearchStore((s) => s.collectionRowSelection)

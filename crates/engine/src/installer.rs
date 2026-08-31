@@ -60,6 +60,10 @@ impl ToolInstaller {
 
     /// Checks if a tool's environment and all its databases are fully installed and ready
     pub fn is_installed(&self, manifest: &ToolManifest) -> bool {
+        if manifest.install == vortexflow_workflow::InstallStrategy::Core {
+            return true;
+        }
+
         let env_path = self.env_mgr.get_tool_env_path(&manifest.id, &manifest.version);
         let bin_dir = env_path.join("bin");
 
@@ -218,6 +222,10 @@ impl ToolInstaller {
 
     /// Performs the live installation of a tool manifest
     pub async fn install(&self, manifest: &ToolManifest) -> Result<(), EngineError> {
+        if manifest.install == vortexflow_workflow::InstallStrategy::Core {
+            return Ok(());
+        }
+
         let tool_id = &manifest.id;
         self.log_mgr.clear(tool_id);
 
@@ -232,7 +240,7 @@ impl ToolInstaller {
 
         // 1. Install tool environment
         match &manifest.install {
-            InstallStrategy::Rattler { packages, channels } => {
+            InstallStrategy::Rattler { packages, channels, pip_packages } => {
                 log("Resolving isolated package manager...");
                 let pm = self.ensure_package_manager().await?;
                 log(&format!("Using package solver: {:?}", pm));
@@ -274,6 +282,28 @@ impl ToolInstaller {
                     log(&format!("Package solver notice: {}", stderr));
                 } else {
                     log("Tool environment packages provisioned successfully!");
+                    if !pip_packages.is_empty() {
+                        let pip_exe = env_path.join("bin").join("pip");
+                        let mut pip_cmd = Command::new(&pip_exe);
+                        pip_cmd.arg("install").arg("-U");
+                        for pkg in pip_packages {
+                            pip_cmd.arg(pkg);
+                        }
+                        log(&format!("Running pip install for: {}", pip_packages.join(", ")));
+                        let pip_out = pip_cmd.output().await;
+                        match pip_out {
+                            Ok(res) if res.status.success() => {
+                                log("Pip packages provisioned successfully!");
+                            }
+                            Ok(res) => {
+                                let err = String::from_utf8_lossy(&res.stderr);
+                                log(&format!("Pip install notice: {}", err));
+                            }
+                            Err(e) => {
+                                log(&format!("Pip install error: {}", e));
+                            }
+                        }
+                    }
                 }
             }
             InstallStrategy::Pip { packages, python_version: _ } => {
@@ -295,6 +325,7 @@ impl ToolInstaller {
             InstallStrategy::BinaryArchive { binary_subpath, .. } => {
                 log(&format!("Extracting standalone binary to {:?}", env_path.join(binary_subpath)));
             }
+            InstallStrategy::Core => {}
         }
 
         // Ensure executable launcher in bin/
@@ -341,6 +372,43 @@ impl ToolInstaller {
                     match git_out {
                         Ok(res) if res.status.success() => {
                             log(&format!("Database '{}' cloned successfully to {:?}", db.name, target_db_dir));
+                            if let Some(ref post_cmd) = db.post_install_command
+                                && !post_cmd.is_empty()
+                            {
+                                let bin_dir = env_path.join("bin");
+                                    let exe_name = &post_cmd[0];
+                                    let target_exe = if exe_name == "python" {
+                                        let py_bin = bin_dir.join("python");
+                                        if py_bin.exists() { py_bin } else { PathBuf::from("python") }
+                                    } else {
+                                        let local_bin = bin_dir.join(exe_name);
+                                        if local_bin.exists() { local_bin } else { PathBuf::from(exe_name) }
+                                    };
+                                    let mut cmd = Command::new(target_exe);
+                                    for arg in &post_cmd[1..] {
+                                        let resolved = arg
+                                            .replace("{env_bin}", &bin_dir.to_string_lossy())
+                                            .replace("{db_dir}", &target_db_dir.to_string_lossy());
+                                        cmd.arg(resolved);
+                                    }
+                                    cmd.current_dir(&target_db_dir);
+                                    let current_path = std::env::var("PATH").unwrap_or_default();
+                                    cmd.env("PATH", format!("{}:{}", bin_dir.to_string_lossy(), current_path));
+
+                                    log(&format!("Running post-install setup for database '{}'...", db.name));
+                                    match cmd.output().await {
+                                        Ok(post_res) if post_res.status.success() => {
+                                            log(&format!("Database '{}' setup complete.", db.name));
+                                        }
+                                        Ok(post_res) => {
+                                            let err = String::from_utf8_lossy(&post_res.stderr);
+                                            log(&format!("Database setup notice for '{}': {}", db.name, err));
+                                        }
+                                        Err(e) => {
+                                            log(&format!("Database setup error for '{}': {}", db.name, e));
+                                        }
+                                    }
+                                }
                         }
                         Ok(res) => {
                             let err = String::from_utf8_lossy(&res.stderr);
@@ -362,14 +430,18 @@ impl ToolInstaller {
 
     /// Uninstalls a tool by deleting its isolated environment directory and clearing logs
     pub async fn uninstall(&self, manifest: &ToolManifest) -> Result<(), EngineError> {
-        let env_path = self.env_mgr.get_tool_env_path(&manifest.id, &manifest.version);
-        if env_path.exists() {
-            tokio::fs::remove_dir_all(&env_path).await.map_err(|e| EngineError::SubprocessFailed {
-                message: format!("Failed to delete environment directory: {}", e),
+        if manifest.install == vortexflow_workflow::InstallStrategy::Core {
+            return Ok(());
+        }
+
+        let tool_dir = self.env_mgr.get_tool_dir(&manifest.id);
+        if tool_dir.exists() {
+            tokio::fs::remove_dir_all(&tool_dir).await.map_err(|e| EngineError::SubprocessFailed {
+                message: format!("Failed to delete extension directory: {}", e),
             })?;
         }
         self.log_mgr.clear(&manifest.id);
-        info!("Successfully uninstalled tool '{}' v{}", manifest.id, manifest.version);
+        info!("Successfully uninstalled extension '{}' v{}", manifest.id, manifest.version);
         Ok(())
     }
 }

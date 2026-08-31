@@ -1,11 +1,11 @@
-import type { WorkflowPort } from "../../workflows/types"
+import type { InputPort, OutputPort, ValidationRule } from "../../workflows/types"
 
 export type NodeType = "executor" | "parser" | "transformer" | "viewer"
 
 export interface ParameterDef {
   id: string
   name: string
-  type: "number" | "string" | "select" | "boolean"
+  type: "number" | "string" | "select" | "boolean" | "column_select" | string
   default?: any
   min?: number
   max?: number
@@ -13,7 +13,10 @@ export interface ParameterDef {
   options?: string[]
   cli_flag?: string
   required?: boolean
+  show?: boolean
   description?: string
+  input_id?: string
+  multiple?: boolean
 }
 
 export interface DatabaseRequirement {
@@ -29,7 +32,7 @@ export interface OutputArtifactSpec {
   id: string
   file_pattern: string
   label: string
-  format: "tsv" | "json" | "html" | "fasta"
+  format: "tsv" | "json" | "html" | "fasta" | "csv" | string
 }
 
 export interface NodeDefinition {
@@ -42,11 +45,13 @@ export interface NodeDefinition {
     type: "binary" | "python_module"
     executable_name: string
     args_template: string[]
+    requires_databases?: string[]
   }
-  inputs?: WorkflowPort[]
-  outputs?: WorkflowPort[]
+  inputs?: InputPort[]
+  outputs?: OutputPort[]
   params?: ParameterDef[]
   output_artifacts?: OutputArtifactSpec[]
+  validation?: ValidationRule[]
 }
 
 export interface ToolManifest {
@@ -56,7 +61,7 @@ export interface ToolManifest {
   category: string
   description: string
   install: {
-    type: "rattler" | "conda" | "pip" | "binary_archive"
+    type: "rattler" | "conda" | "pip" | "binary_archive" | "core"
     packages?: string[]
     channels?: string[]
   }
@@ -66,11 +71,13 @@ export interface ToolManifest {
     type: "binary" | "python_module"
     executable_name: string
     args_template: string[]
+    requires_databases?: string[]
   }
-  inputs?: WorkflowPort[]
-  outputs?: WorkflowPort[]
+  inputs?: InputPort[]
+  outputs?: OutputPort[]
   params?: ParameterDef[]
   output_artifacts?: OutputArtifactSpec[]
+  validation?: ValidationRule[]
 }
 
 export interface ExtensionItem {

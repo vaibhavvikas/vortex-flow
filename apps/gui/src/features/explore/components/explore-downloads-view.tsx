@@ -48,7 +48,7 @@ import {
   deleteDownloadApi,
   type DownloadTaskItem,
 } from "../services/sra-service"
-import { getApiUrl } from "@/lib/api-config"
+import { openApiEventStream } from "@/lib/api-client"
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes === 0) return "0 B"
@@ -93,17 +93,10 @@ export function ExploreDownloadsView() {
   React.useEffect(() => {
     fetchDownloads()
 
-    let eventSource: EventSource | undefined
-    let disposed = false
-
-    void getApiUrl("/api/downloads/events", true).then((url) => {
-      if (disposed) return
-      eventSource = new EventSource(url)
-
-      eventSource.onmessage = (event) => {
+    const closeStream = openApiEventStream("/api/downloads/events", (data) => {
         try {
-          if (!event.data || !event.data.trim()) return
-          const payload = JSON.parse(event.data)
+          if (!data.trim()) return
+          const payload = JSON.parse(data)
           if (payload.ProgressUpdated) {
           const p = payload.ProgressUpdated
           const statusStr = (typeof p.status === "string" ? p.status : "downloading").toLowerCase()
@@ -179,12 +172,10 @@ export function ExploreDownloadsView() {
       } catch {
         fetchDownloads()
       }
-      }
     })
 
     return () => {
-      disposed = true
-      eventSource?.close()
+      closeStream()
     }
   }, [fetchDownloads])
 

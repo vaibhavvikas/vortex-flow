@@ -22,10 +22,20 @@ import {
   Sparkles,
   Lock,
   Unlock,
-  Upload,
-  Download,
+  FileUp,
+  FileDown,
   ShieldCheck,
+  MoreVertical,
 } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
@@ -43,19 +53,20 @@ import { getLayoutedElements } from "../utils/auto-layout"
 import { FolderInputNode } from "./nodes/folder-input-node"
 import { OutputSaveNode } from "./nodes/output-save-node"
 import { DynamicToolNode } from "./nodes/dynamic-tool-node"
-import { getSocketColor } from "./nodes/base-node-card"
+import { getSocketColor, formatPortType } from "./nodes/base-node-card"
 import { CustomWorkflowEdge } from "./edges/custom-edge"
 import { WorkflowNodePalette, type NodePaletteItem } from "./workflow-node-palette"
 import { WorkflowExecutionDrawer } from "./workflow-execution-drawer"
+import { ComponentParametersPanel } from "./component-parameters-panel"
 import { workflowService, type RunWorkflowResponse } from "../services/workflow-service"
+import { getDragTemplate } from "./drag-template-store"
 import { useWorkflowStore } from "../stores/workflow-store"
-import type { WorkflowNodeData, WorkflowGraphDto } from "../types"
+import { canConnectPorts, type WorkflowNodeData, type WorkflowGraphDto } from "../types"
 
 const nodeTypes = {
   folderInput: FolderInputNode,
   outputSave: OutputSaveNode,
   dynamicTool: DynamicToolNode,
-  resfinder: DynamicToolNode,
 }
 
 const edgeTypes = {
@@ -205,13 +216,13 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
               nds.map((n) =>
                 n.id === event.node_id
                   ? {
-                      ...n,
-                      data: {
-                        ...n.data,
-                        status: "completed",
-                        results: event.outputs || {},
-                      },
-                    }
+                    ...n,
+                    data: {
+                      ...n.data,
+                      status: "completed",
+                      results: event.outputs || {},
+                    },
+                  }
                   : n
               )
             )
@@ -286,13 +297,9 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
       const targetPort = targetNode?.data.inputs?.find((p) => p.id === params.targetHandle)
 
       if (sourcePort && targetPort) {
-        if (
-          sourcePort.socket_type !== "any" &&
-          targetPort.socket_type !== "any" &&
-          sourcePort.socket_type !== targetPort.socket_type
-        ) {
+        if (!canConnectPorts(sourcePort, targetPort)) {
           toast.error(
-            `Incompatible sockets: Cannot connect '${sourcePort.socket_type}' to '${targetPort.socket_type}'`
+            `Incompatible sockets: Cannot connect '${formatPortType(sourcePort)}' to '${formatPortType(targetPort)}'`
           )
           return
         }
@@ -347,7 +354,11 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
       if (!rawData) return
 
       try {
-        const item: NodePaletteItem = JSON.parse(rawData)
+        const item = getDragTemplate(rawData)
+        if (!item) {
+          toast.error("The dragged node definition is no longer available. Please drag it again.")
+          return
+        }
         const position = screenToFlowPosition({
           x: event.clientX,
           y: event.clientY,
@@ -443,8 +454,6 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
           tool_id: n.data.tool_id,
           node_id: n.data.node_id,
           node_type: n.data.node_type,
-          manifest: n.data.manifest,
-          nodeDef: n.data.nodeDef,
           inputs: n.data.inputs,
           outputs: n.data.outputs,
           params: n.data.params,
@@ -494,18 +503,67 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
             return
           }
 
-          const importedNodes = parsed.nodes.map((n: any) => ({
-            id: n.id,
-            type: n.type || "dynamicTool",
-            position: n.position || { x: 100, y: 100 },
-            data: {
-              ...n.data,
-              status: "idle" as const,
-              params: n.data.params || {},
-              inputs: n.data.inputs || [],
-              outputs: n.data.outputs || [],
-            },
-          }))
+          const importedNodes = parsed.nodes.map((n: any) => {
+            // Security: explicitly whitelist safe fields only — NEVER spread untrusted JSON.
+            // This prevents prototype pollution via __proto__ / constructor.prototype keys
+            // and XSS from injected strings reaching dangerouslySetInnerHTML elsewhere.
+            const rawData = n?.data ?? {}
+            let nodeType = typeof n.type === "string" ? n.type : "dynamicTool"
+            const kind = typeof rawData.kind === "string" ? rawData.kind : "tool"
+            const nodeId = typeof rawData.node_id === "string" ? rawData.node_id : ""
+            if (
+              kind === "folder_input" ||
+              nodeId === "core.folder_input" ||
+              nodeType === "folder_input" ||
+              nodeType === "core.folder_input" ||
+              nodeType === "folderInput"
+            ) {
+              nodeType = "folderInput"
+            } else if (
+              kind === "output_save" ||
+              nodeId === "core.output_save" ||
+              nodeType === "output_save" ||
+              nodeType === "core.output_save" ||
+              nodeType === "outputSave"
+            ) {
+              nodeType = "outputSave"
+            }
+
+            return {
+              id: typeof n.id === "string" ? n.id : `node_${Date.now()}`,
+              type: nodeType,
+              position:
+                typeof n.position?.x === "number" && typeof n.position?.y === "number"
+                  ? { x: n.position.x, y: n.position.y }
+                  : { x: 100, y: 100 },
+              data: {
+                // Scalar fields: coerce to string and strip control characters
+                title: typeof rawData.title === "string" ? rawData.title.replace(/[\u0000-\u001f]/g, "") : "Untitled",
+                category: typeof rawData.category === "string" ? rawData.category.replace(/[\u0000-\u001f]/g, "") : "Tool",
+                kind: typeof rawData.kind === "string" ? rawData.kind : "tool",
+                tool_id: typeof rawData.tool_id === "string" ? rawData.tool_id : undefined,
+                node_id: typeof rawData.node_id === "string" ? rawData.node_id : undefined,
+                node_type: ["executor", "parser", "transformer", "viewer"].includes(rawData.node_type)
+                  ? rawData.node_type
+                  : undefined,
+                plugin_version: typeof rawData.plugin_version === "string" ? rawData.plugin_version : undefined,
+                // Structured data: validate shape but do not allow prototype keys
+                manifest: rawData.manifest != null && typeof rawData.manifest === "object" && !Array.isArray(rawData.manifest)
+                  ? rawData.manifest
+                  : undefined,
+                nodeDef: rawData.nodeDef != null && typeof rawData.nodeDef === "object" && !Array.isArray(rawData.nodeDef)
+                  ? rawData.nodeDef
+                  : undefined,
+                inputs: Array.isArray(rawData.inputs) ? rawData.inputs : [],
+                outputs: Array.isArray(rawData.outputs) ? rawData.outputs : [],
+                params: rawData.params != null && typeof rawData.params === "object" && !Array.isArray(rawData.params)
+                  ? rawData.params
+                  : {},
+                // Runtime state — always reset, never read from file
+                status: "idle" as const,
+              },
+            }
+          })
 
           const importedEdges = (parsed.edges || []).map((e: any) => {
             const srcNode = importedNodes.find((n: any) => n.id === e.source)
@@ -608,69 +666,7 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Import / Export Controls */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isRunning}
-            className="h-8 gap-1.5 text-xs cursor-pointer font-normal"
-            title="Import workflow from .vortexflow file"
-          >
-            <Upload className="size-3.5 text-muted-foreground" />
-            <span>Import</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportWorkflow}
-            disabled={isRunning}
-            className="h-8 gap-1.5 text-xs cursor-pointer font-normal"
-            title="Export workflow to .vortexflow file"
-          >
-            <Download className="size-3.5 text-muted-foreground" />
-            <span>Export</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsConsoleOpen(!isConsoleOpen)}
-            className="h-8 gap-1.5 text-xs cursor-pointer font-normal"
-            title="Toggle Execution Console"
-          >
-            <Terminal className="size-3.5 text-primary" />
-            Console
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleResetTemplate}
-            disabled={isRunning}
-            className="h-8 gap-1.5 text-xs cursor-pointer font-normal"
-          >
-            <RotateCcw className="size-3.5" />
-            Reset
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleValidatePipeline}
-            disabled={isValidating || isRunning || nodes.length === 0}
-            className="h-8 gap-1.5 text-xs cursor-pointer font-normal text-foreground shadow-xs"
-            title="Pre-flight Pipeline Validation"
-          >
-            {isValidating ? (
-              <Spinner className="size-3.5" />
-            ) : (
-              <ShieldCheck className="size-3.5 text-primary" />
-            )}
-            <span>Validate</span>
-          </Button>
-
+          {/* Primary Action: Run Pipeline */}
           <Button
             variant="default"
             size="sm"
@@ -690,11 +686,91 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
               </>
             )}
           </Button>
+
+          {/* Secondary Actions Overflow Menu */}
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="cursor-pointer text-muted-foreground hover:text-foreground"
+                  aria-label="Workflow actions"
+                />
+              }
+            >
+              <MoreVertical className="size-4" />
+              <span className="sr-only">Workflow actions</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="bottom" sideOffset={6} className="w-56">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-[11px] text-muted-foreground uppercase font-semibold tracking-wider">
+                  Pipeline Actions
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  className="cursor-pointer text-xs gap-2 py-1.5"
+                  onClick={handleValidatePipeline}
+                  disabled={isValidating || isRunning || nodes.length === 0}
+                >
+                  {isValidating ? (
+                    <Spinner className="size-3.5 text-primary" />
+                  ) : (
+                    <ShieldCheck className="size-3.5 text-primary" />
+                  )}
+                  <span>Validate Pipeline</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer text-xs gap-2 py-1.5"
+                  onClick={() => setIsConsoleOpen(!isConsoleOpen)}
+                >
+                  <Terminal className="size-3.5 text-muted-foreground" />
+                  <span>{isConsoleOpen ? "Hide Console" : "Open Console"}</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-[11px] text-muted-foreground uppercase font-semibold tracking-wider">
+                  Workflow File
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  className="cursor-pointer text-xs gap-2 py-1.5"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isRunning}
+                >
+                  <FileUp className="size-3.5 text-muted-foreground" />
+                  <span>Import Workflow (.vortexflow)...</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer text-xs gap-2 py-1.5"
+                  onClick={handleExportWorkflow}
+                  disabled={isRunning}
+                >
+                  <FileDown className="size-3.5 text-muted-foreground" />
+                  <span>Export Workflow (.vortexflow)</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  className="cursor-pointer text-xs gap-2 py-1.5 text-destructive focus:text-destructive focus:bg-destructive/10"
+                  onClick={handleResetTemplate}
+                  disabled={isRunning}
+                >
+                  <RotateCcw className="size-3.5 text-destructive" />
+                  <span>Clear Workspace</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
       {/* Workspace Area: Docked Node Palette + Flow Canvas */}
-      <div className="flex-1 w-full h-full relative flex overflow-hidden">
+      <div className="flex-1 w-full h-full min-h-0 relative flex overflow-hidden">
         {/* Docked Collapsible Node Palette */}
         <WorkflowNodePalette
           isOpen={isPaletteOpen}
@@ -823,6 +899,9 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Component Parameters Visibility Panel */}
+      <ComponentParametersPanel />
     </div>
   )
 }
@@ -834,4 +913,3 @@ export function WorkflowCanvas(props: WorkflowCanvasProps) {
     </ReactFlowProvider>
   )
 }
-

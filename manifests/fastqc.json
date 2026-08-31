@@ -23,28 +23,30 @@
           "-o", "{work_dir}",
           "-t", "{threads}",
           "{input_files}"
-        ]
+        ],
+        "requires_databases": []
       },
       "inputs": [
         {
           "id": "input_files",
           "name": "Sequence Files",
-          "socket_type": "sequence_folder",
-          "direction": "input"
+          "accepted_types": [
+            { "kind": "folder", "schema": "sequence_folder" },
+            { "kind": "file", "format": "fastq" },
+            { "kind": "file", "format": "fasta" }
+          ]
         }
       ],
       "outputs": [
         {
           "id": "qc_html",
           "name": "Quality Report (HTML)",
-          "socket_type": "html_report",
-          "direction": "output"
+          "socket_type": { "kind": "file", "format": "html" }
         },
         {
           "id": "qc_data",
           "name": "FastQC Summary Data",
-          "socket_type": "tsv_file",
-          "direction": "output"
+          "socket_type": { "kind": "file", "format": "tsv" }
         }
       ],
       "params": [
@@ -90,8 +92,9 @@
         {
           "id": "qc_html",
           "name": "Quality Report (HTML)",
-          "socket_type": "html_report",
-          "direction": "input"
+          "accepted_types": [
+            { "kind": "file", "format": "html" }
+          ]
         }
       ],
       "outputs": []

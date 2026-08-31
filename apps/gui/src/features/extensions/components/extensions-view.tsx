@@ -92,21 +92,24 @@ export function ExtensionsView() {
     extensions.forEach((e) => {
       if (e.manifest.category) cats.add(e.manifest.category)
     })
-    return ["all", ...Array.from(cats)]
+    const sortedCats = Array.from(cats).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+    return ["all", ...sortedCats]
   }, [extensions])
 
   const filteredExtensions = React.useMemo(() => {
-    return extensions.filter((ext) => {
-      const m = ext.manifest
-      const matchCat = selectedCategory === "all" || m.category.toLowerCase() === selectedCategory.toLowerCase()
-      const query = searchQuery.toLowerCase()
-      const matchQuery =
-        !query ||
-        m.name.toLowerCase().includes(query) ||
-        m.id.toLowerCase().includes(query) ||
-        m.description.toLowerCase().includes(query)
-      return matchCat && matchQuery
-    })
+    return extensions
+      .filter((ext) => {
+        const m = ext.manifest
+        const matchCat = selectedCategory === "all" || m.category.toLowerCase() === selectedCategory.toLowerCase()
+        const query = searchQuery.toLowerCase()
+        const matchQuery =
+          !query ||
+          m.name.toLowerCase().includes(query) ||
+          m.id.toLowerCase().includes(query) ||
+          m.description.toLowerCase().includes(query)
+        return matchCat && matchQuery
+      })
+      .sort((a, b) => (a.manifest.name || "").localeCompare(b.manifest.name || "", undefined, { sensitivity: "base" }))
   }, [extensions, selectedCategory, searchQuery])
 
   const handleInstall = async (toolId: string, toolName: string) => {
@@ -318,7 +321,12 @@ export function ExtensionsView() {
 
                   <CardFooter className="pt-2 pb-3 px-4 border-t bg-muted/30 flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                      {isInstalled ? (
+                      {manifest.install?.type === "core" ? (
+                        <>
+                          <CheckCircle2 className="size-3.5 text-primary" />
+                          <span className="text-primary font-medium">Built-in</span>
+                        </>
+                      ) : isInstalled ? (
                         <>
                           <CheckCircle2 className="size-3.5 text-emerald-500" />
                           <span className="text-emerald-500 font-medium">Installed & Ready</span>
@@ -349,47 +357,49 @@ export function ExtensionsView() {
                         </Button>
                       )}
 
-                      {isInstalled ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={isUninstalling}
-                          className="h-7 text-xs gap-1.5 cursor-pointer text-destructive/80 hover:text-destructive hover:bg-destructive/10 border-destructive/20 hover:border-destructive/30 transition-colors font-normal"
-                          onClick={() => handleUninstall(manifest.id, manifest.name)}
-                          title="Uninstall extension environment"
-                        >
-                          {isUninstalling ? (
-                            <>
-                              <Loader2 className="size-3 animate-spin text-destructive" />
-                              <span>Uninstalling...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Trash2 className="size-3" />
-                              <span>Uninstall</span>
-                            </>
-                          )}
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="default"
-                          disabled={isInstalling}
-                          className="h-7 text-xs gap-1.5 cursor-pointer font-normal"
-                          onClick={() => handleInstall(manifest.id, manifest.name)}
-                        >
-                          {isInstalling ? (
-                            <>
-                              <Loader2 className="size-3 animate-spin" />
-                              <span>Installing...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Download className="size-3" />
-                              <span>Install Tool</span>
-                            </>
-                          )}
-                        </Button>
+                      {manifest.install?.type !== "core" && (
+                        isInstalled ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isUninstalling}
+                            className="h-7 text-xs gap-1.5 cursor-pointer text-destructive/80 hover:text-destructive hover:bg-destructive/10 border-destructive/20 hover:border-destructive/30 transition-colors font-normal"
+                            onClick={() => handleUninstall(manifest.id, manifest.name)}
+                            title="Uninstall extension environment"
+                          >
+                            {isUninstalling ? (
+                              <>
+                                <Loader2 className="size-3 animate-spin text-destructive" />
+                                <span>Uninstalling...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Trash2 className="size-3" />
+                                <span>Uninstall</span>
+                              </>
+                            )}
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            disabled={isInstalling}
+                            className="h-7 text-xs gap-1.5 cursor-pointer font-normal"
+                            onClick={() => handleInstall(manifest.id, manifest.name)}
+                          >
+                            {isInstalling ? (
+                              <>
+                                <Loader2 className="size-3 animate-spin" />
+                                <span>Installing...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Download className="size-3" />
+                                <span>Install Tool</span>
+                              </>
+                            )}
+                          </Button>
+                        )
                       )}
                     </div>
                   </CardFooter>

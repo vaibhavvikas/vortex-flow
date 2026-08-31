@@ -11,8 +11,8 @@ export const BaseNode = React.forwardRef<HTMLDivElement, BaseNodeProps>(
       <div
         ref={ref}
         className={cn(
-          "relative flex flex-col w-[320px] rounded-2xl border border-border/70 bg-card/95 backdrop-blur-md text-card-foreground shadow-sm transition-all duration-150 select-none",
-          selected && "ring-2 ring-primary/80 border-primary shadow-lg shadow-primary/10",
+          "relative flex flex-col w-[320px] rounded-xl border bg-card text-card-foreground shadow-xs transition-colors duration-150 select-none",
+          selected ? "border-primary ring-[0.75px] ring-primary shadow-sm" : "border-border hover:border-muted-foreground/40",
           className
         )}
         {...props}

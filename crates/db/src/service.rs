@@ -1,15 +1,15 @@
 use crate::error::DbError;
 use crate::models::{CollectionFile, CollectionItem, CollectionMetadata, DatasetDetails};
 use crate::repositories::{
-    FileRepository, ItemRepository, MetadataRepository, SqliteFileRepository, SqliteItemRepository, SqliteMetadataRepository,
+    FileRepository, ItemRepository, MetadataRepository, SqliteFileRepository, SqliteItemRepository,
+    SqliteMetadataRepository,
 };
 use rusqlite::Connection;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use vortexflow_providers::SraRecord;
 
 pub struct CollectionService {
-    conn: Arc<Mutex<Connection>>,
+    db_path: PathBuf,
     item_repo: Box<dyn ItemRepository>,
     metadata_repo: Box<dyn MetadataRepository>,
     file_repo: Box<dyn FileRepository>,
@@ -29,7 +29,9 @@ mod tests {
         let service = CollectionService::new(db_path).expect("database should initialize");
 
         {
-            let conn = service.conn.lock().expect("database lock should be available");
+            let conn = service
+                .connect()
+                .expect("database connection should be available");
             conn.execute(
                 "INSERT INTO download_tasks (id, task_name, accession_label, format, file_size_bytes, downloaded_bytes, download_status, created_at)
                  VALUES ('task-1', 'sample.sra', 'SRR1', 'sra', 1000, 400, 'downloading', '2026-01-01T00:00:00Z')",
@@ -42,7 +44,9 @@ mod tests {
             .update_file_download_progress("task-1", "paused", None, None, None)
             .expect("status update should succeed");
 
-        let conn = service.conn.lock().expect("database lock should be available");
+        let conn = service
+            .connect()
+            .expect("database connection should be available");
         let (downloaded, total): (i64, i64) = conn
             .query_row(
                 "SELECT downloaded_bytes, file_size_bytes FROM download_tasks WHERE id = 'task-1'",
@@ -93,7 +97,7 @@ impl CollectionService {
         if schema_version < 1 {
             let tx = conn.transaction()?;
             tx.execute_batch(
-            "CREATE TABLE IF NOT EXISTS collection_items (
+                "CREATE TABLE IF NOT EXISTS collection_items (
                 id TEXT PRIMARY KEY,
                 provider TEXT NOT NULL DEFAULT 'ncbi',
                 accession TEXT NOT NULL,
@@ -199,18 +203,32 @@ impl CollectionService {
             tx.commit()?;
         }
 
-        tracing::info!("Initialized SQLite persistent collection database at {:?}", db_path);
+        tracing::info!(
+            "Initialized SQLite persistent collection database at {:?}",
+            db_path
+        );
 
         Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db_path,
             item_repo: Box::new(SqliteItemRepository::new()),
             metadata_repo: Box::new(SqliteMetadataRepository::new()),
             file_repo: Box::new(SqliteFileRepository::new()),
         })
     }
 
+    /// Opens a short-lived connection so one slow query cannot serialize every
+    /// request behind a process-wide mutex. WAL permits concurrent readers.
+    fn connect(&self) -> Result<Connection, DbError> {
+        let conn = Connection::open(&self.db_path)?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;",
+        )?;
+        Ok(conn)
+    }
+
     pub fn get_all_sra_records(&self) -> Result<Vec<SraRecord>, DbError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.connect()?;
         let items = self.item_repo.get_all(&conn)?;
 
         let mut sra_records = Vec::new();
@@ -263,7 +281,7 @@ impl CollectionService {
     }
 
     pub fn add_sra_records(&self, records: Vec<SraRecord>) -> Result<usize, DbError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.connect()?;
         let now = chrono::Utc::now().to_rfc3339();
 
         for record in &records {
@@ -297,17 +315,21 @@ impl CollectionService {
     }
 
     pub fn remove_records(&self, ids: &[String]) -> Result<usize, DbError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.connect()?;
         self.item_repo.delete_batch(&conn, ids)
     }
 
     pub fn get_dataset_details(&self, id: &str) -> Result<Option<DatasetDetails>, DbError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.connect()?;
         let item = self.item_repo.get_by_id(&conn, id)?;
         if let Some(item) = item {
             let metadata = self.metadata_repo.get_by_item_id(&conn, id)?;
             let files = self.file_repo.get_by_item_id(&conn, id)?;
-            Ok(Some(DatasetDetails { item, metadata, files }))
+            Ok(Some(DatasetDetails {
+                item,
+                metadata,
+                files,
+            }))
         } else {
             Ok(None)
         }
@@ -317,7 +339,7 @@ impl CollectionService {
         &self,
         resolved_files: &[vortexflow_providers::ResolvedFileMetadata],
     ) -> Result<usize, DbError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.connect()?;
 
         // Build mapping from accession / id -> collection_items.id
         let items = self.item_repo.get_all(&conn)?;
@@ -398,7 +420,7 @@ impl CollectionService {
         download_url: &str,
         accessions: &[String],
     ) -> Result<(), DbError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.connect()?;
         let now = chrono::Utc::now().to_rfc3339();
 
         conn.execute(
@@ -435,7 +457,7 @@ impl CollectionService {
     }
 
     pub fn get_download_tasks(&self) -> Result<Vec<crate::models::DownloadTaskItem>, DbError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.connect()?;
         let mut stmt = conn.prepare(
             "SELECT t.id,
                     COALESCE(MIN(l.item_id), t.id),
@@ -497,8 +519,15 @@ impl CollectionService {
         file_size_bytes: Option<u64>,
         local_path: Option<&str>,
     ) -> Result<(), DbError> {
-        let conn = self.conn.lock().unwrap();
-        let _ = self.file_repo.update_file_status(&conn, file_id, status, downloaded_bytes, file_size_bytes, local_path);
+        let conn = self.connect()?;
+        let _ = self.file_repo.update_file_status(
+            &conn,
+            file_id,
+            status,
+            downloaded_bytes,
+            file_size_bytes,
+            local_path,
+        );
 
         conn.execute(
             "UPDATE download_tasks
@@ -541,12 +570,15 @@ impl CollectionService {
     }
 
     pub fn delete_download_file(&self, file_id: &str) -> Result<(), DbError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.connect()?;
         let _ = conn.execute(
             "UPDATE collection_items SET status = 'saved' WHERE status != 'downloaded' AND id IN (SELECT item_id FROM task_item_links WHERE task_id = ?1)",
             rusqlite::params![file_id],
         );
-        let _ = conn.execute("DELETE FROM download_tasks WHERE id = ?1", rusqlite::params![file_id]);
+        let _ = conn.execute(
+            "DELETE FROM download_tasks WHERE id = ?1",
+            rusqlite::params![file_id],
+        );
         conn.execute(
             "DELETE FROM collection_files WHERE id = ?1 OR item_id = ?1 OR file_name = ?1",
             rusqlite::params![file_id],
@@ -555,7 +587,7 @@ impl CollectionService {
     }
 
     pub fn mark_item_downloaded(&self, accession_or_id: &str) -> Result<(), DbError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.connect()?;
         conn.execute(
             "UPDATE collection_items SET status = 'downloaded' WHERE id = ?1 OR accession = ?1",
             rusqlite::params![accession_or_id],
@@ -563,8 +595,12 @@ impl CollectionService {
         Ok(())
     }
 
-    pub fn mark_task_completed(&self, task_id: &str, destination: Option<&str>) -> Result<Vec<String>, DbError> {
-        let conn = self.conn.lock().unwrap();
+    pub fn mark_task_completed(
+        &self,
+        task_id: &str,
+        destination: Option<&str>,
+    ) -> Result<Vec<String>, DbError> {
+        let conn = self.connect()?;
         if let Some(dest) = destination {
             let _ = conn.execute(
                 "UPDATE download_tasks SET download_status = 'completed', local_path = ?1, downloaded_bytes = file_size_bytes WHERE id = ?2",

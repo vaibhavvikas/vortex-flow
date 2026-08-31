@@ -3,16 +3,21 @@
   "name": "ResFinder",
   "version": "4.4.2",
   "category": "AMR & Resistance",
-  "description": "Identifies acquired antimicrobial resistance genes and chromosomal point mutations in whole-genome sequence data.",
+  "description": "Identifies acquired antimicrobial resistance genes and chromosomal point mutations in whole-genome sequence data using BLAST and KMA.",
   "install": {
     "type": "rattler",
     "packages": [
       "python=3.10",
-      "bioconda::resfinder=4.4.2"
+      "bioconda::blast",
+      "bioconda::kma",
+      "pip"
     ],
     "channels": [
       "bioconda",
       "conda-forge"
+    ],
+    "pip_packages": [
+      "resfinder"
     ]
   },
   "databases": [
@@ -20,118 +25,105 @@
       "name": "resfinder_db",
       "download_url": "https://bitbucket.org/genomicepidemiology/resfinder_db.git",
       "is_git": true,
-      "destination_subpath": "db/resfinder_db",
+      "destination_subpath": "resfinder/data/resfinder_db",
       "cli_flag": "-db_res",
-      "env_var_name": "CGE_RESFINDER_RESISTOME_DB"
+      "env_var_name": "CGE_RESFINDER_RESISTOME_DB",
+      "post_install_command": ["python", "INSTALL.py", "{env_bin}/kma_index"]
     },
     {
       "name": "pointfinder_db",
       "download_url": "https://bitbucket.org/genomicepidemiology/pointfinder_db.git",
       "is_git": true,
-      "destination_subpath": "db/pointfinder_db",
+      "destination_subpath": "resfinder/data/pointfinder_db",
       "cli_flag": "-db_point",
-      "env_var_name": "CGE_RESFINDER_POINTFINDER_DB"
+      "env_var_name": "CGE_RESFINDER_POINTFINDER_DB",
+      "post_install_command": ["python", "INSTALL.py", "{env_bin}/kma_index"]
     }
   ],
   "nodes": [
     {
-      "id": "resfinder_runner",
-      "name": "ResFinder Execution",
+      "id": "resfinder_fasta",
+      "name": "ResFinder (FASTA)",
       "node_type": "executor",
-      "description": "Executes ResFinder 4.4.2 CLI on genomic sequence reads and writes result tables",
-      "validation": {
-        "require_at_least_one": ["acquired", "point"],
-        "error_message": "At least one target ('Scan Acquired AMR' or 'Scan Point Mutations') must be checked."
-      },
+      "description": "Scans assembled genome FASTA files for acquired AMR genes (ResFinder), chromosomal mutations (PointFinder), and disinfectant resistance (DisinFinder)",
+      "validation": [
+        {
+          "rule": "require_at_least_one",
+          "params": ["acquired", "point", "disinfectant"],
+          "error_message": "At least one target ('Scan Acquired AMR', 'Scan Point Mutations', or 'Scan Disinfectant Genes') must be checked."
+        }
+      ],
       "execution": {
         "type": "binary",
         "executable_name": "run_resfinder.py",
         "args_template": [
-          "-ifa", "{input_files}",
+          "-ifa", "{input_fasta}",
           "-o", "{work_dir}",
+          "-s", "{species}",
           "-t", "{threshold}",
-          "-l", "{min_cov}",
-          "-s", "{species}"
-        ]
+          "-l", "{min_cov}"
+        ],
+        "requires_databases": ["resfinder_db", "pointfinder_db"]
       },
       "inputs": [
         {
-          "id": "input_files",
-          "name": "Sequence Files",
-          "socket_type": "sequence_folder",
-          "direction": "input"
+          "id": "input_fasta",
+          "name": "Assembly (FASTA)",
+          "accepted_types": [
+            { "kind": "file", "format": "fasta" },
+            { "kind": "folder", "schema": "core.sequence_folder" }
+          ]
         }
       ],
       "outputs": [
         {
           "id": "resfinder_dir",
           "name": "ResFinder Output Folder",
-          "socket_type": "resfinder_output_folder",
-          "direction": "output"
+          "socket_type": { "kind": "folder", "schema": "resfinder_output_folder" }
         },
         {
           "id": "results_tab",
           "name": "AMR Genes (TSV)",
-          "socket_type": "tsv_file",
-          "direction": "output"
+          "socket_type": { "kind": "file", "format": "tsv", "schema": "amr_genes" }
         },
         {
           "id": "pheno_table",
           "name": "Phenotypes (TSV)",
-          "socket_type": "tsv_file",
-          "direction": "output"
+          "socket_type": { "kind": "file", "format": "tsv", "schema": "phenotype_profile" }
         },
         {
           "id": "point_results",
           "name": "Point Mutations (TSV)",
-          "socket_type": "tsv_file",
-          "direction": "output"
+          "socket_type": { "kind": "file", "format": "tsv", "schema": "point_mutations" }
         },
         {
           "id": "hit_seqs",
           "name": "Hit Sequences (FASTA)",
-          "socket_type": "fasta_file",
-          "direction": "output"
+          "socket_type": { "kind": "file", "format": "fasta" }
         }
       ],
       "params": [
         {
-          "id": "threshold",
-          "name": "Min % Identity",
-          "type": "number",
-          "default": 0.90,
-          "min": 0.50,
-          "max": 1.00,
-          "step": 0.05,
-          "description": "Minimum BLAST/KMA percent identity threshold (default 0.90)"
-        },
-        {
-          "id": "min_cov",
-          "name": "Min Coverage",
-          "type": "number",
-          "default": 0.60,
-          "min": 0.10,
-          "max": 1.00,
-          "step": 0.05,
-          "description": "Minimum percent sequence length coverage (default 0.60)"
-        },
-        {
           "id": "species",
-          "name": "Point Mutation Species",
+          "name": "Species (PointFinder)",
           "type": "select",
           "default": "other",
+          "show": true,
           "options": [
             "other",
             "escherichia_coli",
             "klebsiella",
             "salmonella",
             "campylobacter",
+            "campylobacter_coli",
+            "campylobacter_jejuni",
             "staphylococcus_aureus",
             "enterococcus_faecium",
             "enterococcus_faecalis",
             "mycobacterium_tuberculosis",
             "helicobacter_pylori",
-            "neisseria_gonorrhoeae"
+            "neisseria_gonorrhoeae",
+            "pseudomonas_aeruginosa"
           ],
           "description": "Species database for PointFinder chromosomal point mutations"
         },
@@ -140,6 +132,7 @@
           "name": "Scan Acquired AMR",
           "type": "boolean",
           "default": true,
+          "show": true,
           "cli_flag": "-acq",
           "description": "Identify acquired antimicrobial resistance genes"
         },
@@ -148,8 +141,410 @@
           "name": "Scan Point Mutations",
           "type": "boolean",
           "default": false,
+          "show": true,
           "cli_flag": "-c",
           "description": "Identify chromosomal point mutations in target species"
+        },
+        {
+          "id": "disinfectant",
+          "name": "Scan Disinfectant Genes",
+          "type": "boolean",
+          "default": false,
+          "show": false,
+          "cli_flag": "-d",
+          "description": "Identify disinfectant and antiseptic resistance genes"
+        },
+        {
+          "id": "threshold",
+          "name": "Min % Identity (AMR)",
+          "type": "number",
+          "default": 0.90,
+          "min": 0.50,
+          "max": 1.00,
+          "step": 0.05,
+          "show": false,
+          "description": "Minimum BLAST percent identity threshold (default 0.90)"
+        },
+        {
+          "id": "min_cov",
+          "name": "Min Coverage (AMR)",
+          "type": "number",
+          "default": 0.60,
+          "min": 0.10,
+          "max": 1.00,
+          "step": 0.05,
+          "show": false,
+          "description": "Minimum percent sequence length coverage (default 0.60)"
+        },
+        {
+          "id": "threshold_point",
+          "name": "Min % Identity (Point)",
+          "type": "number",
+          "default": 0.90,
+          "min": 0.50,
+          "max": 1.00,
+          "step": 0.05,
+          "show": false,
+          "cli_flag": "-t_p",
+          "description": "Threshold for PointFinder identity (default 0.90)"
+        },
+        {
+          "id": "min_cov_point",
+          "name": "Min Coverage (Point)",
+          "type": "number",
+          "default": 0.60,
+          "min": 0.10,
+          "max": 1.00,
+          "step": 0.05,
+          "show": false,
+          "cli_flag": "-l_p",
+          "description": "Minimum coverage for PointFinder (default 0.60)"
+        },
+        {
+          "id": "acq_overlap",
+          "name": "Acquired Gene Overlap (bp)",
+          "type": "number",
+          "default": 30,
+          "min": 0,
+          "max": 100,
+          "step": 5,
+          "show": false,
+          "cli_flag": "-ao",
+          "description": "Allowed nucleotide overlap between genes (default 30)"
+        },
+        {
+          "id": "ignore_missing_species",
+          "name": "Ignore Missing Species",
+          "type": "boolean",
+          "default": true,
+          "show": false,
+          "cli_flag": "--ignore_missing_species",
+          "description": "Silently skip point mutations without error if species database is unavailable"
+        },
+        {
+          "id": "unknown_mut",
+          "name": "Show Unknown Mutations",
+          "type": "boolean",
+          "default": false,
+          "show": false,
+          "cli_flag": "-u",
+          "description": "Show all mutations found even if unknown to the resistance database"
+        },
+        {
+          "id": "ignore_indels",
+          "name": "Ignore Frameshift Indels",
+          "type": "boolean",
+          "default": false,
+          "show": false,
+          "cli_flag": "--ignore_indels",
+          "description": "Ignore frameshift-causing insertions and deletions in PointFinder"
+        },
+        {
+          "id": "ignore_stop_codons",
+          "name": "Ignore Premature Stops",
+          "type": "boolean",
+          "default": false,
+          "show": false,
+          "cli_flag": "--ignore_stop_codons",
+          "description": "Ignore premature stop codons in PointFinder"
+        },
+        {
+          "id": "output_aln",
+          "name": "Output Alignments",
+          "type": "boolean",
+          "default": false,
+          "show": false,
+          "cli_flag": "--output_aln",
+          "description": "Generate detailed pairwise alignment files"
+        },
+        {
+          "id": "db_path_res",
+          "name": "Custom ResFinder DB Path",
+          "type": "string",
+          "default": "",
+          "show": false,
+          "cli_flag": "-db_res",
+          "description": "Optional custom local directory for ResFinder database (overrides auto-downloaded DB)"
+        },
+        {
+          "id": "db_path_point",
+          "name": "Custom PointFinder DB Path",
+          "type": "string",
+          "default": "",
+          "show": false,
+          "cli_flag": "-db_point",
+          "description": "Optional custom local directory for PointFinder database (overrides auto-downloaded DB)"
+        }
+      ],
+      "output_artifacts": [
+        {
+          "id": "results_tab",
+          "file_pattern": "ResFinder_results_tab.txt",
+          "label": "Acquired Resistance Genes Table",
+          "format": "tsv"
+        },
+        {
+          "id": "pheno_table",
+          "file_pattern": "pheno_table.txt",
+          "label": "Predicted Phenotype Susceptibility Table",
+          "format": "tsv"
+        },
+        {
+          "id": "point_results",
+          "file_pattern": "PointFinder_results.txt",
+          "label": "Point Mutations Table",
+          "format": "tsv"
+        },
+        {
+          "id": "hit_seqs",
+          "file_pattern": "ResFinder_Hit_in_genome_seq.fsa",
+          "label": "Extracted Resistance Gene FASTA Hits",
+          "format": "fasta"
+        }
+      ]
+    },
+    {
+      "id": "resfinder_fastq",
+      "name": "ResFinder (FASTQ)",
+      "node_type": "executor",
+      "description": "Aligns raw sequencing reads (FASTQ / FASTQ.GZ) directly against resistance databases using KMA to detect AMR genes, point mutations, and disinfectant resistance",
+      "validation": [
+        {
+          "rule": "require_at_least_one",
+          "params": ["acquired", "point", "disinfectant"],
+          "error_message": "At least one target ('Scan Acquired AMR', 'Scan Point Mutations', or 'Scan Disinfectant Genes') must be checked."
+        }
+      ],
+      "execution": {
+        "type": "binary",
+        "executable_name": "run_resfinder.py",
+        "args_template": [
+          "-ifq", "{input_reads}",
+          "-o", "{work_dir}",
+          "-s", "{species}",
+          "-t", "{threshold}",
+          "-l", "{min_cov}"
+        ],
+        "requires_databases": ["resfinder_db", "pointfinder_db"]
+      },
+      "inputs": [
+        {
+          "id": "input_reads",
+          "name": "Sequencing Reads (FASTQ)",
+          "accepted_types": [
+            { "kind": "file", "format": "fastq" },
+            { "kind": "folder", "schema": "core.sequence_folder" }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "resfinder_dir",
+          "name": "ResFinder Output Folder",
+          "socket_type": { "kind": "folder", "schema": "resfinder_output_folder" }
+        },
+        {
+          "id": "results_tab",
+          "name": "AMR Genes (TSV)",
+          "socket_type": { "kind": "file", "format": "tsv", "schema": "amr_genes" }
+        },
+        {
+          "id": "pheno_table",
+          "name": "Phenotypes (TSV)",
+          "socket_type": { "kind": "file", "format": "tsv", "schema": "phenotype_profile" }
+        },
+        {
+          "id": "point_results",
+          "name": "Point Mutations (TSV)",
+          "socket_type": { "kind": "file", "format": "tsv", "schema": "point_mutations" }
+        },
+        {
+          "id": "hit_seqs",
+          "name": "Hit Sequences (FASTA)",
+          "socket_type": { "kind": "file", "format": "fasta" }
+        }
+      ],
+      "params": [
+        {
+          "id": "species",
+          "name": "Species (PointFinder)",
+          "type": "select",
+          "default": "other",
+          "show": true,
+          "options": [
+            "other",
+            "escherichia_coli",
+            "klebsiella",
+            "salmonella",
+            "campylobacter",
+            "campylobacter_coli",
+            "campylobacter_jejuni",
+            "staphylococcus_aureus",
+            "enterococcus_faecium",
+            "enterococcus_faecalis",
+            "mycobacterium_tuberculosis",
+            "helicobacter_pylori",
+            "neisseria_gonorrhoeae",
+            "pseudomonas_aeruginosa"
+          ],
+          "description": "Species database for PointFinder chromosomal point mutations"
+        },
+        {
+          "id": "nanopore",
+          "name": "Nanopore Long Reads",
+          "type": "boolean",
+          "default": false,
+          "show": false,
+          "cli_flag": "--nanopore",
+          "description": "Set to true if input reads are from Oxford Nanopore sequencing"
+        },
+        {
+          "id": "acquired",
+          "name": "Scan Acquired AMR",
+          "type": "boolean",
+          "default": true,
+          "show": true,
+          "cli_flag": "-acq",
+          "description": "Identify acquired antimicrobial resistance genes"
+        },
+        {
+          "id": "point",
+          "name": "Scan Point Mutations",
+          "type": "boolean",
+          "default": false,
+          "show": true,
+          "cli_flag": "-c",
+          "description": "Identify chromosomal point mutations in target species"
+        },
+        {
+          "id": "disinfectant",
+          "name": "Scan Disinfectant Genes",
+          "type": "boolean",
+          "default": false,
+          "show": false,
+          "cli_flag": "-d",
+          "description": "Identify disinfectant and antiseptic resistance genes"
+        },
+        {
+          "id": "threshold",
+          "name": "Min % Identity (AMR)",
+          "type": "number",
+          "default": 0.90,
+          "min": 0.50,
+          "max": 1.00,
+          "step": 0.05,
+          "show": false,
+          "description": "Minimum KMA percent identity threshold (default 0.90)"
+        },
+        {
+          "id": "min_cov",
+          "name": "Min Coverage (AMR)",
+          "type": "number",
+          "default": 0.60,
+          "min": 0.10,
+          "max": 1.00,
+          "step": 0.05,
+          "show": false,
+          "description": "Minimum percent sequence length coverage (default 0.60)"
+        },
+        {
+          "id": "threshold_point",
+          "name": "Min % Identity (Point)",
+          "type": "number",
+          "default": 0.90,
+          "min": 0.50,
+          "max": 1.00,
+          "step": 0.05,
+          "show": false,
+          "cli_flag": "-t_p",
+          "description": "Threshold for PointFinder identity (default 0.90)"
+        },
+        {
+          "id": "min_cov_point",
+          "name": "Min Coverage (Point)",
+          "type": "number",
+          "default": 0.60,
+          "min": 0.10,
+          "max": 1.00,
+          "step": 0.05,
+          "show": false,
+          "cli_flag": "-l_p",
+          "description": "Minimum coverage for PointFinder (default 0.60)"
+        },
+        {
+          "id": "acq_overlap",
+          "name": "Acquired Gene Overlap (bp)",
+          "type": "number",
+          "default": 30,
+          "min": 0,
+          "max": 100,
+          "step": 5,
+          "show": false,
+          "cli_flag": "-ao",
+          "description": "Allowed nucleotide overlap between genes (default 30)"
+        },
+        {
+          "id": "ignore_missing_species",
+          "name": "Ignore Missing Species",
+          "type": "boolean",
+          "default": true,
+          "show": false,
+          "cli_flag": "--ignore_missing_species",
+          "description": "Silently skip point mutations without error if species database is unavailable"
+        },
+        {
+          "id": "unknown_mut",
+          "name": "Show Unknown Mutations",
+          "type": "boolean",
+          "default": false,
+          "show": false,
+          "cli_flag": "-u",
+          "description": "Show all mutations found even if unknown to the resistance database"
+        },
+        {
+          "id": "ignore_indels",
+          "name": "Ignore Frameshift Indels",
+          "type": "boolean",
+          "default": false,
+          "show": false,
+          "cli_flag": "--ignore_indels",
+          "description": "Ignore frameshift-causing insertions and deletions in PointFinder"
+        },
+        {
+          "id": "ignore_stop_codons",
+          "name": "Ignore Premature Stops",
+          "type": "boolean",
+          "default": false,
+          "show": false,
+          "cli_flag": "--ignore_stop_codons",
+          "description": "Ignore premature stop codons in PointFinder"
+        },
+        {
+          "id": "output_aln",
+          "name": "Output Alignments",
+          "type": "boolean",
+          "default": false,
+          "show": false,
+          "cli_flag": "--output_aln",
+          "description": "Generate detailed pairwise alignment files"
+        },
+        {
+          "id": "db_path_res",
+          "name": "Custom ResFinder DB Path",
+          "type": "string",
+          "default": "",
+          "show": false,
+          "cli_flag": "-db_res",
+          "description": "Optional custom local directory for ResFinder database (overrides auto-downloaded DB)"
+        },
+        {
+          "id": "db_path_point",
+          "name": "Custom PointFinder DB Path",
+          "type": "string",
+          "default": "",
+          "show": false,
+          "cli_flag": "-db_point",
+          "description": "Optional custom local directory for PointFinder database (overrides auto-downloaded DB)"
         }
       ],
       "output_artifacts": [
@@ -184,32 +579,39 @@
       "name": "ResFinder Phenotype Parser",
       "node_type": "parser",
       "description": "Parses ResFinder results and pheno_table into structured AMR resistance profiles and matrices",
+      "execution": {
+        "type": "binary",
+        "executable_name": "python",
+        "args_template": [
+          "-c",
+          "import os, json, sys\nsrc = '{resfinder_dir}'\nout = '{work_dir}'\nos.makedirs(out, exist_ok=True)\n# Parse AMR results\namr_file = os.path.join(src, 'ResFinder_results_tab.txt')\namr_data = []\nif os.path.exists(amr_file):\n    with open(amr_file) as f:\n        lines = [l.strip().split('\\t') for l in f if l.strip()]\n        if len(lines) > 1:\n            for p in lines[1:]:\n                if len(p) >= 4:\n                    amr_data.append({'gene': p[0], 'identity': float(p[1]) if p[1].replace('.','',1).isdigit() else 100.0, 'alignment': p[2], 'coverage': float(p[3]) if p[3].replace('.','',1).isdigit() else 100.0, 'phenotype': p[7] if len(p) > 7 else 'Resistant'})\nwith open(os.path.join(out, 'amr_genes.json'), 'w') as f:\n    json.dump(amr_data, f, indent=2)\n# Parse Phenotypes\npheno_file = os.path.join(src, 'pheno_table.txt')\npheno_data = []\nif os.path.exists(pheno_file):\n    with open(pheno_file) as f:\n        lines = [l.strip().split('\\t') for l in f if l.strip()]\n        if len(lines) > 1:\n            for p in lines[1:]:\n                if len(p) >= 3:\n                    p_str = p[2]\n                    pheno_data.append({'antimicrobial': p[0], 'class': p[1] if len(p)>1 else '', 'phenotype': p_str, 'resistant': 'resis' in p_str.lower(), 'genetic_background': p[3] if len(p)>3 else ''})\nwith open(os.path.join(out, 'phenotype_profile.json'), 'w') as f:\n    json.dump(pheno_data, f, indent=2)\n# Parse Point mutations\npoint_file = os.path.join(src, 'PointFinder_results.txt')\npoint_data = []\nif os.path.exists(point_file):\n    with open(point_file) as f:\n        lines = [l.strip().split('\\t') for l in f if l.strip()]\n        if len(lines) > 1:\n            for p in lines[1:]:\n                if len(p) >= 3:\n                    point_data.append({'mutation': p[0], 'nucleotide_change': p[1] if len(p)>1 else '', 'amino_acid_change': p[2] if len(p)>2 else '', 'phenotype': p[3] if len(p)>3 else 'Resistant'})\nwith open(os.path.join(out, 'point_mutations.json'), 'w') as f:\n    json.dump(point_data, f, indent=2)\n"
+        ],
+        "requires_databases": []
+      },
       "inputs": [
         {
           "id": "resfinder_dir",
           "name": "ResFinder Output Folder",
-          "socket_type": "resfinder_output_folder",
-          "direction": "input"
+          "accepted_types": [
+            { "kind": "folder", "schema": "resfinder_output_folder" }
+          ]
         }
       ],
       "outputs": [
         {
           "id": "amr_genes",
           "name": "AMR Gene Matrix",
-          "socket_type": "amr_gene_table",
-          "direction": "output"
+          "socket_type": { "kind": "file", "format": "json", "schema": "amr_genes" }
         },
         {
           "id": "point_mutations",
           "name": "Point Mutation Matrix",
-          "socket_type": "point_mutation_table",
-          "direction": "output"
+          "socket_type": { "kind": "file", "format": "json", "schema": "point_mutations" }
         },
         {
           "id": "phenotype_profile",
           "name": "Phenotype Susceptibility",
-          "socket_type": "phenotype_table",
-          "direction": "output"
+          "socket_type": { "kind": "file", "format": "json", "schema": "phenotype_profile" }
         }
       ],
       "params": [
@@ -230,6 +632,26 @@
           "default": false,
           "description": "Include genes with unconfirmed phenotype susceptibility"
         }
+      ],
+      "output_artifacts": [
+        {
+          "id": "amr_genes",
+          "file_pattern": "amr_genes.json",
+          "label": "Extracted AMR Genes (JSON)",
+          "format": "json"
+        },
+        {
+          "id": "point_mutations",
+          "file_pattern": "point_mutations.json",
+          "label": "Extracted Point Mutations (JSON)",
+          "format": "json"
+        },
+        {
+          "id": "phenotype_profile",
+          "file_pattern": "phenotype_profile.json",
+          "label": "Phenotype Profile (JSON)",
+          "format": "json"
+        }
       ]
     },
     {
@@ -241,14 +663,16 @@
         {
           "id": "amr_genes",
           "name": "AMR Gene Matrix",
-          "socket_type": "amr_gene_table",
-          "direction": "input"
+          "accepted_types": [
+            { "kind": "file", "format": "json", "schema": "amr_genes" }
+          ]
         },
         {
           "id": "phenotype_profile",
           "name": "Phenotype Susceptibility",
-          "socket_type": "phenotype_table",
-          "direction": "input"
+          "accepted_types": [
+            { "kind": "file", "format": "json", "schema": "phenotype_profile" }
+          ]
         }
       ],
       "outputs": [],

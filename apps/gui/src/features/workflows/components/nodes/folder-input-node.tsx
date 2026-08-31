@@ -6,11 +6,12 @@ import { workflowService } from "../../services/workflow-service"
 import type { WorkflowNodeData } from "../../types"
 
 interface FolderInputNodeProps {
+  id: string
   data: WorkflowNodeData
   selected?: boolean
 }
 
-export const FolderInputNode = React.memo(function FolderInputNode({ data, selected }: FolderInputNodeProps) {
+export const FolderInputNode = React.memo(function FolderInputNode({ id, data, selected }: FolderInputNodeProps) {
   const dirPath = (data.params?.directory_path as string) || ""
   const pattern = (data.params?.file_pattern as string) || "*.fasta,*.fna,*.fa,*.fastq"
 
@@ -23,6 +24,7 @@ export const FolderInputNode = React.memo(function FolderInputNode({ data, selec
 
   return (
     <GenericNodeCard
+      id={id}
       data={data}
       icon={FolderInput}
       title={data.title || "Folder Input"}
@@ -33,8 +35,10 @@ export const FolderInputNode = React.memo(function FolderInputNode({ data, selec
         {
           id: "sequence_files",
           name: "Sequence Files",
-          socket_type: "sequence_folder",
-          direction: "output",
+          socket_type: {
+            kind: "folder",
+            schema: "core.sequence_folder",
+          },
         },
       ]}
     >
@@ -50,6 +54,7 @@ export const FolderInputNode = React.memo(function FolderInputNode({ data, selec
 
       <NodeInputField
         label="File Match Filter"
+        required
         description="Glob filter pattern for matching files"
         value={pattern}
         onChange={(val) => data.onParamChange?.("file_pattern", val)}

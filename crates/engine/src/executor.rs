@@ -5,12 +5,14 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 
 use vortexflow_workflow::{
-    ManifestLoader, NodeKind, NodeType, ToolManifest, WorkflowGraph,
+    ManifestLoader, NodeKind, NodeType, WorkflowGraph,
 };
 
 use crate::env::EnvironmentManager;
 use crate::error::EngineError;
-use crate::nodes::{execute_folder_input, execute_output_save, execute_parser_tool, execute_viewer_tool};
+use crate::nodes::{
+    execute_column_selector, execute_folder_input, execute_output_save, execute_viewer_tool,
+};
 use crate::runner::ToolRunner;
 use crate::types::{NodeExecutionReport, NodeStatus, WorkflowExecutionReport, WorkflowStreamEvent};
 
@@ -36,7 +38,7 @@ impl WorkflowExecutor {
         event_tx: mpsc::Sender<WorkflowStreamEvent>,
     ) -> Result<WorkflowExecutionReport, EngineError> {
         let workflow_start = Instant::now();
-        let run_id = format!("run_{}", uuid::Uuid::new_v4().to_string().replace('-', "")[..12].to_string());
+        let run_id = format!("run_{}", &uuid::Uuid::new_v4().to_string().replace('-', "")[..12]);
 
         // 1. Validate Workflow DAG topology (Acyclic, Port compatibility, Parameter constraints)
         let validation = vortexflow_workflow::validator::validate_workflow_with_manifests(graph, Some(&self.manifest_loader))?;
@@ -103,11 +105,10 @@ impl WorkflowExecutor {
             // Gather inputs for this node from incoming edges
             let mut resolved_inputs: HashMap<String, serde_json::Value> = HashMap::new();
             for edge in graph.edges.iter().filter(|e| e.target_node == node.id) {
-                if let Some(src_outputs) = node_outputs.get(&edge.source_node) {
-                    if let Some(val) = src_outputs.get(&edge.source_port) {
+                if let Some(src_outputs) = node_outputs.get(&edge.source_node)
+                    && let Some(val) = src_outputs.get(&edge.source_port) {
                         resolved_inputs.insert(edge.target_port.clone(), val.clone());
                     }
-                }
             }
 
             let node_run_dir = run_dir.join(&node.id);
@@ -118,18 +119,34 @@ impl WorkflowExecutor {
                 NodeKind::FolderInput => {
                     execute_folder_input(node, &resolved_inputs, &node_run_dir, &mut logs, &event_tx).await
                 }
+                NodeKind::OutputSave => {
+                    execute_output_save(node, &resolved_inputs, &node_run_dir, &mut logs, &event_tx).await
+                }
                 NodeKind::Tool(tool_id) => {
-                    if let Some(manifest) = self.manifest_loader.get(tool_id) {
-                        self.dispatch_tool_node(
-                            node,
-                            &manifest,
-                            &tool_runner,
-                            &resolved_inputs,
-                            &node_run_dir,
-                            &mut logs,
-                            &event_tx,
-                        )
-                        .await
+                    if tool_id == "core.column_selector" || node.id.contains("column_selector") {
+                        execute_column_selector(node, &resolved_inputs, &node_run_dir, &mut logs, &event_tx).await
+                    } else if let Some((manifest, node_def)) = self.manifest_loader.get_node_definition(&node.id) {
+                        if node_def.node_type == NodeType::Viewer {
+                            execute_viewer_tool(node, &manifest, Some(&node_def), &resolved_inputs, &node_run_dir, &mut logs, &event_tx).await
+                        } else {
+                            tool_runner
+                                .execute_tool(node, &manifest, Some(&node_def), &resolved_inputs, &node_run_dir, &mut logs, &event_tx)
+                                .await
+                        }
+                    } else if let Some(manifest) = self.manifest_loader.get(tool_id) {
+                        let node_def = manifest.get_node_def(&node.id, &node.title);
+                        let is_viewer = node_def.map(|n| n.node_type == NodeType::Viewer).unwrap_or(false);
+
+                        if is_viewer {
+                            execute_viewer_tool(node, &manifest, node_def, &resolved_inputs, &node_run_dir, &mut logs, &event_tx).await
+                        } else {
+                            tool_runner
+                                .execute_tool(node, &manifest, node_def, &resolved_inputs, &node_run_dir, &mut logs, &event_tx)
+                                .await
+                        }
+                    } else if node.id.contains("viewer") || node.id.contains("visualizer") {
+                        let core_manifest = vortexflow_workflow::create_core_manifest();
+                        execute_viewer_tool(node, &core_manifest, None, &resolved_inputs, &node_run_dir, &mut logs, &event_tx).await
                     } else {
                         Err(EngineError::NodeExecutionFailed {
                             node_id: node.id.clone(),
@@ -139,9 +156,6 @@ impl WorkflowExecutor {
                             ),
                         })
                     }
-                }
-                NodeKind::OutputSave => {
-                    execute_output_save(node, &resolved_inputs, &node_run_dir, &mut logs, &event_tx).await
                 }
             };
 
@@ -242,35 +256,6 @@ impl WorkflowExecutor {
             .await;
 
         Ok(report)
-    }
-
-    /// Dispatches a tool node to its appropriate handler (Executor, Parser, or Viewer)
-    async fn dispatch_tool_node(
-        &self,
-        node: &vortexflow_workflow::WorkflowNode,
-        manifest: &ToolManifest,
-        tool_runner: &ToolRunner<'_>,
-        inputs: &HashMap<String, serde_json::Value>,
-        work_dir: &Path,
-        logs: &mut Vec<String>,
-        event_tx: &mpsc::Sender<WorkflowStreamEvent>,
-    ) -> Result<HashMap<String, serde_json::Value>, EngineError> {
-        let node_def = manifest.get_node_def(&node.id, &node.title);
-        let node_type = node_def.map(|n| n.node_type).unwrap_or(NodeType::Executor);
-
-        match node_type {
-            NodeType::Parser => {
-                execute_parser_tool(node, manifest, node_def, inputs, work_dir, logs, event_tx).await
-            }
-            NodeType::Viewer => {
-                execute_viewer_tool(node, manifest, node_def, inputs, work_dir, logs, event_tx).await
-            }
-            NodeType::Executor | NodeType::Transformer => {
-                tool_runner
-                    .execute_tool(node, manifest, node_def, inputs, work_dir, logs, event_tx)
-                    .await
-            }
-        }
     }
 
     /// Convenience wrapper for non-streaming batch execution

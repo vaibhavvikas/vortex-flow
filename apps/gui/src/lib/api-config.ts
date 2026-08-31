@@ -22,9 +22,7 @@ export function getApiConfig(): Promise<ApiConfig> {
   return configPromise
 }
 
-export async function getApiUrl(endpoint: string, includeToken = false): Promise<string> {
-  const { baseUrl, token } = await getApiConfig()
-  const url = new URL(endpoint, baseUrl)
-  if (includeToken && token) url.searchParams.set("token", token)
-  return url.toString()
+export async function getApiUrl(endpoint: string): Promise<string> {
+  const { baseUrl } = await getApiConfig()
+  return new URL(endpoint, baseUrl).toString()
 }

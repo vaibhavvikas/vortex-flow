@@ -49,7 +49,7 @@ pub async fn execute_output_save(
                 if src_path.is_file() {
                     let filename = src_path.file_name().unwrap_or_default();
                     let target_path = dest_dir.join(filename);
-                    if let Ok(_) = tokio::fs::copy(&src_path, &target_path).await {
+                    if tokio::fs::copy(&src_path, &target_path).await.is_ok() {
                         let c_msg = format!("Exported artifact {:?} -> {:?}", filename, target_path);
                         logs.push(c_msg.clone());
                         let _ = event_tx
@@ -60,14 +60,14 @@ pub async fn execute_output_save(
                             .await;
                         saved_files.push(target_path.to_string_lossy().to_string());
                     }
-                } else if src_path.is_dir() {
-                    if let Ok(entries) = std::fs::read_dir(&src_path) {
+                } else if src_path.is_dir()
+                    && let Ok(entries) = std::fs::read_dir(&src_path) {
                         for entry in entries.flatten() {
                             let item_path = entry.path();
                             if item_path.is_file() {
                                 let filename = item_path.file_name().unwrap_or_default();
                                 let target_path = dest_dir.join(filename);
-                                if let Ok(_) = tokio::fs::copy(&item_path, &target_path).await {
+                                if tokio::fs::copy(&item_path, &target_path).await.is_ok() {
                                     let c_msg = format!("Exported folder item {:?} -> {:?}", filename, target_path);
                                     logs.push(c_msg.clone());
                                     let _ = event_tx
@@ -81,13 +81,12 @@ pub async fn execute_output_save(
                             }
                         }
                     }
-                }
             }
         } else if let Some(arr) = val.as_array() {
             let json_filename = format!("{}.json", port_id);
             let target_path = dest_dir.join(&json_filename);
-            if let Ok(json_str) = serde_json::to_string_pretty(arr) {
-                if let Ok(_) = tokio::fs::write(&target_path, json_str).await {
+            if let Ok(json_str) = serde_json::to_string_pretty(arr)
+                && tokio::fs::write(&target_path, json_str).await.is_ok() {
                     let c_msg = format!("Exported dataset [{}] -> {:?}", port_id, target_path);
                     logs.push(c_msg.clone());
                     let _ = event_tx
@@ -98,7 +97,6 @@ pub async fn execute_output_save(
                         .await;
                     saved_files.push(target_path.to_string_lossy().to_string());
                 }
-            }
         } else if let Some(map) = val.as_object() {
             for (k, v) in map {
                 if let Some(src_str) = v.as_str() {
@@ -106,7 +104,7 @@ pub async fn execute_output_save(
                     if src_path.exists() && src_path.is_file() {
                         let filename = src_path.file_name().unwrap_or_default();
                         let target_path = dest_dir.join(filename);
-                        if let Ok(_) = tokio::fs::copy(&src_path, &target_path).await {
+                        if tokio::fs::copy(&src_path, &target_path).await.is_ok() {
                             let c_msg = format!("Exported [{}] {:?} -> {:?}", k, filename, target_path);
                             logs.push(c_msg.clone());
                             let _ = event_tx
@@ -132,6 +130,30 @@ pub async fn execute_output_save(
             "count": saved_files.len()
         }),
     );
+
+    let open_folder = node
+        .params
+        .get("open_folder")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if open_folder && dest_dir.exists() {
+        let folder_to_open = dest_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            #[cfg(target_os = "macos")]
+            {
+                let _ = std::process::Command::new("open").arg(&folder_to_open).spawn();
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let _ = std::process::Command::new("explorer").arg(&folder_to_open).spawn();
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let _ = std::process::Command::new("xdg-open").arg(&folder_to_open).spawn();
+            }
+        });
+    }
 
     Ok(outputs)
 }

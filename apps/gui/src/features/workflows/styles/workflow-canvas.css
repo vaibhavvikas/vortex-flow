@@ -1,0 +1,22 @@
+/* ============================================================================
+   VortexFlow Workflow Canvas & React Flow Styles
+   ============================================================================ */
+
+.react-flow__node {
+  height: auto;
+  border-radius: 0.75rem;
+  min-width: inherit;
+}
+
+.react-flow__node.selected,
+.react-flow__node:focus,
+.react-flow__node:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.react-flow .react-flow__node.selectable:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+  border-radius: 0.75rem;
+}

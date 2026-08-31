@@ -1,4 +1,5 @@
 import { getApiConfig, getApiUrl } from "@/lib/api-config"
+import { openApiEventStream } from "@/lib/api-client"
 
 export interface LogEntry {
   id: string
@@ -11,7 +12,7 @@ export interface LogEntry {
 export type LogListener = (entry: LogEntry) => void
 
 class LogService {
-  private eventSource: EventSource | null = null
+  private closeStream: (() => void) | null = null
   private listeners: Set<LogListener> = new Set()
   private initialLogs: LogEntry[] = []
 
@@ -36,33 +37,22 @@ class LogService {
   public connectStream(onLog: LogListener): () => void {
     this.listeners.add(onLog)
 
-    if (!this.eventSource) {
-      getApiUrl("/api/logs/stream", true).then((url) => {
-        if (this.eventSource || this.listeners.size === 0) return
-        this.eventSource = new EventSource(url)
-
-        this.eventSource.onmessage = (event) => {
+    if (!this.closeStream) {
+      this.closeStream = openApiEventStream("/api/logs/stream", (data) => {
           try {
-            const entry: LogEntry = JSON.parse(event.data)
+            const entry: LogEntry = JSON.parse(data)
             this.listeners.forEach((listener) => listener(entry))
           } catch {
             // Ignore parse errors
           }
-        }
-
-        this.eventSource.onerror = () => {
-          // Reconnect logic managed automatically by EventSource
-        }
-      }).catch(() => {
-        // EventSource unsupported or endpoint unreachable
       })
     }
 
     return () => {
       this.listeners.delete(onLog)
-      if (this.listeners.size === 0 && this.eventSource) {
-        this.eventSource.close()
-        this.eventSource = null
+      if (this.listeners.size === 0 && this.closeStream) {
+        this.closeStream()
+        this.closeStream = null
       }
     }
   }

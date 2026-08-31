@@ -71,22 +71,20 @@ pub async fn execute_parser_tool(
                             outputs.insert(key, serde_json::json!(parsed_rows));
                         }
                     }
-                } else if ext == "json" {
-                    if let Ok(content) = std::fs::read_to_string(&file_path) {
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                } else if ext == "json"
+                    && let Ok(content) = std::fs::read_to_string(&file_path)
+                        && let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
                             let key = file_name.trim_end_matches(".json").to_lowercase();
                             outputs.insert(key, val);
                         }
-                    }
-                }
             }
         }
     }
 
     // 3. Domain Normalizations (e.g. ResFinder/PointFinder AMR profiles)
     let resfinder_tab = source_dir.join("ResFinder_results_tab.txt");
-    if resfinder_tab.exists() {
-        if let Ok(content) = tokio::fs::read_to_string(&resfinder_tab).await {
+    if resfinder_tab.exists()
+        && let Ok(content) = tokio::fs::read_to_string(&resfinder_tab).await {
             let mut amr_genes = Vec::new();
             for line in content.lines().skip(1) {
                 let parts: Vec<&str> = line.split('\t').collect();
@@ -102,11 +100,10 @@ pub async fn execute_parser_tool(
             }
             outputs.insert("amr_genes".to_string(), serde_json::json!(amr_genes));
         }
-    }
 
     let pheno_tab = source_dir.join("pheno_table.txt");
-    if pheno_tab.exists() {
-        if let Ok(content) = tokio::fs::read_to_string(&pheno_tab).await {
+    if pheno_tab.exists()
+        && let Ok(content) = tokio::fs::read_to_string(&pheno_tab).await {
             let mut phenotypes = Vec::new();
             for line in content.lines().skip(1) {
                 let parts: Vec<&str> = line.split('\t').collect();
@@ -125,11 +122,10 @@ pub async fn execute_parser_tool(
             }
             outputs.insert("phenotype_profile".to_string(), serde_json::json!(phenotypes));
         }
-    }
 
     let point_tab = source_dir.join("PointFinder_results.txt");
-    if point_tab.exists() {
-        if let Ok(content) = tokio::fs::read_to_string(&point_tab).await {
+    if point_tab.exists()
+        && let Ok(content) = tokio::fs::read_to_string(&point_tab).await {
             let mut point_mutations = Vec::new();
             for line in content.lines().skip(1) {
                 let parts: Vec<&str> = line.split('\t').collect();
@@ -144,7 +140,6 @@ pub async fn execute_parser_tool(
             }
             outputs.insert("point_mutations".to_string(), serde_json::json!(point_mutations));
         }
-    }
 
     let summary_log = format!(
         "Universal Parser extracted {} analytical output dataset(s) from {:?}",
