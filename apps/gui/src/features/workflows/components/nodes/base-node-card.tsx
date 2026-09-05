@@ -213,6 +213,7 @@ export function GenericNodeCard({
             <Button
               variant={isInspectingThisNode ? "secondary" : "ghost"}
               size="sm"
+              data-parameter-trigger={nodeId}
               onClick={(e) => {
                 e.stopPropagation()
                 nodeId && setInspectNodeId(isInspectingThisNode ? null : nodeId)

@@ -100,6 +100,7 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
   const setIsRunning = useWorkflowStore((s) => s.setIsRunning)
   const setNodes = useWorkflowStore((s) => s.setNodes)
   const setEdges = useWorkflowStore((s) => s.setEdges)
+  const setInspectNodeId = useWorkflowStore((s) => s.setInspectNodeId)
 
   const [cycleError, setCycleError] = React.useState<string | null>(null)
   const [isConsoleOpen, setIsConsoleOpen] = React.useState(false)
@@ -795,7 +796,10 @@ function WorkflowCanvasInner({ onSelectNode }: WorkflowCanvasProps) {
             onConnect={onConnect}
             deleteKeyCode={["Backspace", "Delete"]}
             onNodeClick={(_, node) => onSelectNode?.(node as Node<WorkflowNodeData>)}
-            onPaneClick={() => onSelectNode?.(null)}
+            onPaneClick={() => {
+              onSelectNode?.(null)
+              setInspectNodeId(null)
+            }}
             nodesDraggable={isInteractive}
             nodesConnectable={isInteractive}
             elementsSelectable={isInteractive}

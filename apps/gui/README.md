@@ -1,75 +1,50 @@
-# React + TypeScript + Vite
+# VortexFlow GUI (`vortexflow-gui`)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Desktop graphical user interface for VortexFlow, built with **Electron**, **React 19**, **TypeScript**, **Tailwind CSS v4**, and **@xyflow/react**.
 
-Currently, two official plugins are available:
+## Overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+`vortexflow-gui` provides an interactive bioinformatics workbench for composing, validating, and monitoring genomic pipelines. It communicates with the local `vortexflow-server` over REST and Server-Sent Events (SSE).
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Pipeline Canvas**: Drag-and-drop node graph builder with Dagre auto-layout, custom handles, and cycle prevention.
+- **Node Palette**: Docked, searchable library of bioinformatics tools categorized by function.
+- **Parameters Inspector**: Langflow-style parameters drawer with off-screen click dismissal and smooth animations.
+- **NCBI Explorer**: Integrated Entrez query engine for SRA, BioProject, and Assembly databases.
+- **Live Terminal Console**: Real-time SSE streaming for live pipeline output and execution logs.
+- **Analysis Visualizers**: Recharts-powered interactive QC charts and antibiogram resistance matrices.
+- **Theming**: Dark and light mode support with modern typography and sleek glassmorphism accents.
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Install dependencies:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Start the Vite development server standalone:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+npm run dev
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Start both the backend server and Electron desktop shell concurrently:
 
+```bash
+npm run electron:dev
+```
+
+Type checking and linting:
+
+```bash
+npm run typecheck
+npm run lint
+```
+
+Production build:
+
+```bash
+npm run build
 ```

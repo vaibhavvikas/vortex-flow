@@ -3,8 +3,11 @@ import { X, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { cn } from "@/lib/utils"
 import { useWorkflowStore } from "../stores/workflow-store"
 import type { ParameterDef } from "@/features/extensions/types"
+import type { Node } from "@xyflow/react"
+import type { WorkflowNodeData } from "../types"
 
 export const FOLDER_INPUT_PARAMS: ParameterDef[] = [
   {
@@ -56,12 +59,77 @@ export function ComponentParametersPanel() {
     toggleParamVisibility,
   } = useWorkflowStore()
 
+  const panelRef = React.useRef<HTMLDivElement>(null)
+  const [hasRendered, setHasRendered] = React.useState(false)
+
   const activeNode = React.useMemo(() => {
     if (!inspectNodeId) return null
     return nodes.find((n) => n.id === inspectNodeId) || null
   }, [nodes, inspectNodeId])
 
-  const nodeData = activeNode?.data
+  // Retain last active node data during slide-out exit animation
+  const lastActiveNodeRef = React.useRef<Node<WorkflowNodeData> | null>(null)
+  if (activeNode) {
+    lastActiveNodeRef.current = activeNode
+  }
+
+  const displayNode = activeNode || lastActiveNodeRef.current
+  const isOpen = Boolean(inspectNodeId && activeNode)
+
+  React.useEffect(() => {
+    if (isOpen && !hasRendered) {
+      setHasRendered(true)
+    }
+  }, [isOpen, hasRendered])
+
+  // Click off-screen (click outside) & Escape key dismissal
+  React.useEffect(() => {
+    if (!isOpen) return
+
+    const handlePointerDown = (event: PointerEvent | MouseEvent) => {
+      const target = event.target as Element | null
+      if (!target) return
+
+      // If click is within the panel, do not dismiss
+      if (panelRef.current?.contains(target)) {
+        return
+      }
+
+      // If click is on a parameter toggle trigger button on a node, let onClick handle it
+      if (target.closest("[data-parameter-trigger]")) {
+        return
+      }
+
+      // If click is inside a portal element (tooltips, popovers, select dropdowns), do not dismiss
+      if (
+        target.closest('[data-slot="tooltip-content"]') ||
+        target.closest('[data-slot="tooltip-positioner"]') ||
+        target.closest('[data-slot="select-content"]') ||
+        target.closest('[data-slot="popover-content"]')
+      ) {
+        return
+      }
+
+      // Clicked anywhere off the parameters panel -> close the panel
+      setInspectNodeId(null)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setInspectNodeId(null)
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown)
+    document.addEventListener("keydown", handleKeyDown)
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown)
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [isOpen, setInspectNodeId])
+
+  const nodeData = displayNode?.data
   const manifest = nodeData?.manifest
   const nodeDef = nodeData?.nodeDef
   const inputs = nodeData?.inputs || []
@@ -71,16 +139,16 @@ export function ComponentParametersPanel() {
 
   // Strictly use nodeDef.params if this is a specialized sub-node; otherwise fallback to manifest
   const applicableParams: ParameterDef[] = React.useMemo(() => {
-    if (!activeNode) return []
-    if (activeNode.data.kind === "folder_input") {
+    if (!displayNode) return []
+    if (displayNode.data.kind === "folder_input") {
       return FOLDER_INPUT_PARAMS
     }
-    if (activeNode.data.kind === "output_save") {
+    if (displayNode.data.kind === "output_save") {
       return OUTPUT_SAVE_PARAMS
     }
     const rawParams = nodeDef?.params || (nodeDef ? [] : manifest?.params || [])
     return rawParams.filter((p) => !inputPortIds.has(p.id))
-  }, [activeNode, nodeDef, manifest, inputPortIds])
+  }, [displayNode, nodeDef, manifest, inputPortIds])
 
   // Default visible parameters:
   // 1. If required is true -> always show
@@ -97,13 +165,26 @@ export function ComponentParametersPanel() {
   }, [applicableParams])
 
   const visibleParams = React.useMemo(() => {
-    return activeNode?.data.visible_params || defaultVisibleIds
-  }, [activeNode?.data.visible_params, defaultVisibleIds])
+    return displayNode?.data.visible_params || defaultVisibleIds
+  }, [displayNode?.data.visible_params, defaultVisibleIds])
 
-  if (!inspectNodeId || !activeNode || !nodeData) return null
+  if (!hasRendered && !isOpen) return null
+  if (!displayNode || !nodeData) return null
 
   return (
-    <div className="absolute top-16 right-4 bottom-4 z-40 w-84 sm:w-96 rounded-xl border border-border/80 bg-card/95 backdrop-blur-md shadow-2xl overflow-hidden flex flex-col max-h-[calc(100%-5rem)] animate-in fade-in slide-in-from-right-4 duration-200">
+    <div
+      ref={panelRef}
+      role="region"
+      aria-label="Component Parameters"
+      data-state={isOpen ? "open" : "closed"}
+      className={cn(
+        "absolute top-16 right-4 bottom-4 z-40 w-84 sm:w-96 rounded-xl border border-border/80 bg-card/95 backdrop-blur-md overflow-hidden flex flex-col max-h-[calc(100%-5rem)] shadow-2xl",
+        "transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+        isOpen
+          ? "translate-x-0 opacity-100 pointer-events-auto"
+          : "translate-x-[calc(100%+2rem)] opacity-0 pointer-events-none shadow-none"
+      )}
+    >
       {/* Header */}
       <div className="flex items-start justify-between p-4 pb-3 border-b border-border/70 bg-muted/10 shrink-0">
         <div className="flex flex-col gap-0.5 min-w-0 pr-2">
@@ -187,7 +268,7 @@ export function ComponentParametersPanel() {
                       size="sm"
                       disabled={param.required === true}
                       onClick={() =>
-                        toggleParamVisibility(activeNode.id, param.id, defaultVisibleIds)
+                        toggleParamVisibility(displayNode.id, param.id, defaultVisibleIds)
                       }
                       className="h-6 text-[11px] px-2.5 text-muted-foreground hover:text-foreground border-border/70 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
@@ -198,7 +279,7 @@ export function ComponentParametersPanel() {
                       variant="secondary"
                       size="sm"
                       onClick={() =>
-                        toggleParamVisibility(activeNode.id, param.id, defaultVisibleIds)
+                        toggleParamVisibility(displayNode.id, param.id, defaultVisibleIds)
                       }
                       className="h-6 text-[11px] px-2.5 text-foreground font-medium bg-muted hover:bg-muted/80 border border-border/60 cursor-pointer"
                     >

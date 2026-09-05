@@ -264,6 +264,7 @@ export const DynamicToolNode = React.memo(function DynamicToolNode({ id, data, s
       {hiddenOptionalParams.length > 0 && (
         <button
           type="button"
+          data-parameter-trigger={actualNodeId}
           onClick={() => actualNodeId && setInspectNodeId(actualNodeId)}
           className="mx-3.5 my-1 flex items-center justify-between px-2.5 py-1.5 rounded-lg border border-dashed border-border/70 bg-muted/20 hover:bg-muted/50 hover:border-primary/40 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer nodrag"
         >
