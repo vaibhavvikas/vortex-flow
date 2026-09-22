@@ -131,7 +131,7 @@ export function AppSidebar({
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">VortexFlow</span>
-                <span className="truncate text-xs text-muted-foreground">v2.4 Pro</span>
+                <span className="truncate text-xs text-muted-foreground">v0.1 Alpha</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>

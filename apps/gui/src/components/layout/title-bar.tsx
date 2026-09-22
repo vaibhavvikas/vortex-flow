@@ -8,7 +8,7 @@ export function TitleBar() {
       }`}
     >
       <div className="text-xs font-medium text-muted-foreground truncate pointer-events-none">
-        VortexFlow — WGS Pipeline v2.4
+        VortexFlow - v0.1 Alpha
       </div>
     </header>
   )

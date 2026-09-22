@@ -4,6 +4,16 @@ A modern, visual, node-based pipeline builder and analysis workbench for bacteri
 
 VortexFlow pairs a high-performance **Rust** core engine with a responsive, modern **React / Electron** desktop workspace. It allows bioinformaticians and researchers to compose Directed Acyclic Graph (DAG) pipelines, ingest genomic datasets directly from NCBI Entrez, configure tool parameters interactively, and execute reproducible workflows with automated Conda/Rattler environment isolation and real-time streaming feedback.
 
+## Screenshots
+
+| Pipeline Canvas | NCBI Search |
+|:-:|:-:|
+| ![Workflow builder](docs/screenshots/workflows.png) | ![NCBI search explorer](docs/screenshots/search.png) |
+
+| Running a Workflow | Downloader |
+|:-:|:-:|
+| ![Workflow execution](docs/screenshots/run_workflow.png) | ![Parallel downloader](docs/screenshots/downloader.png) |
+
 ## Key Features
 
 - **Interactive Node-Based Pipeline Canvas**
